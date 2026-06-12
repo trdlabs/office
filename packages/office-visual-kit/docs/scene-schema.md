@@ -118,8 +118,12 @@ Status → badge color mapping lives in the theme (`statusColors`), defaults in
   statusColors: { running: '#59f7d4', /* … */ },
   statusBadgeText: true,           // false → dot-only badges
   statusBadgeScale: 1.1,           // badge size relative to the world (1 = 16px-tile sizing)
-  statusBadgeOffsetY: 44,          // extra px above the sprite — lift badges over the desk monitor
-  agentLabel: { color, backgroundColor, backgroundAlpha, fontSize },
+  statusBadgeOffsetY: 2,           // extra px above the sprite top
+  agentLabelOffsetY: 22,           // extra px below the feet anchor — push the
+                                   // chip onto the desk front ("nameplate")
+                                   // when the agent sits behind its desk
+  agentLabel: { color, backgroundColor, backgroundAlpha, fontSize,
+                borderColor, borderAlpha },  // border = plaque look (optional)
   objectLabel: { /* same shape */ },
 }
 ```

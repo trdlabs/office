@@ -66,6 +66,22 @@ export const PAL = {
   brugEdge: '#797194',
   brugGold: '#caa54b',
 
+  // --- work-zone carpet (under the desk wings) --------------------------------
+  crug: '#97a3ae',
+  crugDot: '#a0abb6',
+  crugBorder: '#7e8a98',
+  crugEdge: '#6e7a88',
+
+  // --- infra room: glass partition + raised tech floor ------------------------
+  glassFrame: '#7e8a96',
+  glassFrameHi: '#98a4b0',
+  glassFrameDark: '#5c6672',
+  glassPane: '#bfe8f855',
+  glassPaneHi: '#e8f7ff66',
+  techFloor: '#4a5263',
+  techFloorHi: '#566076',
+  techSeam: '#3a4150',
+
   // --- day walls -------------------------------------------------------------
   wallTop: '#5e6876',
   wallTopHi: '#717c8c',
@@ -106,12 +122,15 @@ export const PAL = {
   handle: '#caa54b',
 
   // --- desks / wood furniture --------------------------------------------------
-  deskTop: '#b98a59',
-  deskHi: '#caa06b',
-  deskGrain: '#a87a4b',
-  deskFace: '#936b41',
-  deskDark: '#7c5835',
-  deskLeg: '#5e4226',
+  // Iteration 3: desks went two shades darker (walnut) + a near-black
+  // outline so workstations never blend into the light plank floor.
+  deskTop: '#9c6e40',
+  deskHi: '#b08350',
+  deskGrain: '#8a5f36',
+  deskFace: '#7a5330',
+  deskDark: '#603f23',
+  deskLeg: '#46301c',
+  deskOutline: '#332414',
   shelfFrame: '#96704a',
   shelfDark: '#6f5236',
   shelfBoard: '#7e5e3e',
@@ -202,12 +221,13 @@ export function nightify(img) {
 }
 
 /**
- * Per-role looks for the back-facing seated agents (LPC-inspired, fully
- * original). Agents are seen from behind / slightly above, so a role reads
- * through hair style + color, shirt color on the shoulders, and head-level
- * accessories that survive the back view (cap, headset, bun, ponytail).
+ * Per-role looks for the front-facing seated agents (LPC-inspired
+ * proportions, fully original pixels). Agents face the viewer, so a role
+ * reads through hair style + color, the outfit on the torso (suit, blazer,
+ * hoodie, shirt+tie, tee, turtleneck, vest) and face-level accessories
+ * (glasses, cap, headset).
  *
- * `executive: true` switches to the tall command chair (Boss).
+ * `executive: true` switches to the tall winged command chair (Boss).
  */
 export const ROLE_STYLES = {
   boss: {
@@ -217,19 +237,21 @@ export const ROLE_STYLES = {
     top: '#5a4a96',
     topShade: '#4a3d7e',
     accent: '#ffd166',
-    hairStyle: 'short',
+    hairStyle: 'slick',
+    outfit: 'suit',
     accessory: null,
     executive: true,
   },
   strategy_analyst: {
     skin: '#c98c5e',
-    hair: '#1c2638',
-    hairShade: '#141c2a',
+    hair: '#2e4060',
+    hairShade: '#233148',
     top: '#2f96a3',
     topShade: '#26818c',
     accent: '#59f7d4',
     hairStyle: 'long',
-    accessory: null,
+    outfit: 'blazer',
+    accessory: 'glasses',
   },
   researcher: {
     skin: '#f0c8a0',
@@ -239,6 +261,7 @@ export const ROLE_STYLES = {
     topShade: '#3d7e4e',
     accent: '#d8efc8',
     hairStyle: 'bun',
+    outfit: 'turtleneck',
     accessory: null,
   },
   critic: {
@@ -249,6 +272,7 @@ export const ROLE_STYLES = {
     topShade: '#b26c2e',
     accent: '#ff5d5d',
     hairStyle: 'short',
+    outfit: 'shirt_tie',
     accessory: null,
   },
   builder: {
@@ -258,7 +282,9 @@ export const ROLE_STYLES = {
     top: '#3e6cb4',
     topShade: '#345a98',
     accent: '#e09040',
+    accentShade: '#b8742f',
     hairStyle: 'short',
+    outfit: 'hoodie',
     accessory: 'cap',
   },
   evaluator: {
@@ -269,6 +295,7 @@ export const ROLE_STYLES = {
     topShade: '#4e5298',
     accent: '#8ec4ff',
     hairStyle: 'ponytail',
+    outfit: 'tee',
     accessory: null,
   },
   performance_monitor: {
@@ -279,6 +306,7 @@ export const ROLE_STYLES = {
     topShade: '#478a57',
     accent: '#69e85e',
     hairStyle: 'short',
+    outfit: 'tee',
     accessory: 'headset',
   },
   knowledge_curator: {
@@ -288,7 +316,8 @@ export const ROLE_STYLES = {
     top: '#8a76c4',
     topShade: '#7563ab',
     accent: '#ffd166',
-    hairStyle: 'long',
+    hairStyle: 'curly',
+    outfit: 'hoodie',
     accessory: null,
   },
 };

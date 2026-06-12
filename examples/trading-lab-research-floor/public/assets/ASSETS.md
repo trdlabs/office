@@ -15,11 +15,15 @@ to reproduce byte-for-byte).
 - Both theme tilesets (`office-tileset-day.png`, `office-tileset-night.png`)
   come from the same drawing pass: night is derived from the day art by
   `nightify()` in `tools/lib/palette.mjs`.
-- The agent characters are LPC-*inspired* (silhouette/variety ideas only)
+- The agent characters are LPC-*inspired* (proportion/variety ideas only)
   but are fully original pixels drawn by `tools/lib/agents.mjs` — no LPC
-  spritesheets, parts, or palettes were used. Real LPC assets, if ever
-  added, must live under `assets/third-party/lpc/` with
-  `SOURCE.md` + `ATTRIBUTIONS.md` + `LICENSES.md` and must never be labeled
+  spritesheets, parts, or palettes were used. Since Visual Iteration 3 they
+  are **front-facing seated busts** (face, eyes, hair styles, outfits,
+  glasses/cap/headset accessories; the Boss gets a winged executive chair),
+  designed to sit behind the generated desks. Importing real LPC Generator
+  output remains a supported future drop-in path: such files must live
+  under `assets/third-party/lpc/` with `SOURCE.md` + `ATTRIBUTIONS.md` +
+  `LICENSES.md` (CC-BY-SA/GPL attribution) and must never be labeled
   generated/CC0 (see `packages/office-visual-kit/docs/asset-guidelines.md`).
 
 Third-party assets (none at the moment) must live under

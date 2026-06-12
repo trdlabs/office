@@ -13,13 +13,15 @@ Positions are geometry → they live in the map.
   `npm run generate:map`. Vite picks the new map up on reload.
 - **Hand-authored map**: open the `.tmj` in Tiled, drag things, re-export.
 
-Agents are anchored at the feet and face their desks. A workstation is a
-2×2 desk block (`desk_<variant>_tl/tr/bl/br` tiles: monitor in the upper
-half, keyboard at the lower edge) plus a back-facing agent spawned at the
-block's bottom-center, feet ≈2 px above the next tile row — the agent's head
-then tucks under the desk edge and never reads as "standing on the desk".
-Keep one empty tile row below each agent so the desk nameplate has floor
-under it before the next workstation starts.
+Agents are anchored at the feet and face the viewer. A workstation is a
+2×1 desk block (`desk_<variant>_l/r` tiles: desk surface + laptop with the
+lid back toward the camera) plus a front-facing agent bust whose spawn
+point sits **exactly on the desk block's top edge** — the desk and laptop
+then cover the agent's lap and the scene reads as "agent works at a
+computer" while the face, hair and outfit stay visible. The nameplate chip
+is pushed down onto the desk's front edge via `theme.agentLabelOffsetY`
+(set it to the desk-block height in px, minus a small overlap). Keep one
+empty tile row between stacked workstations so plates and badges breathe.
 
 ## Change the palette
 
@@ -55,15 +57,17 @@ themes are entirely data.
 - `labels.agentMode` / `labels.objectMode` in the scene config: `'always'`
   (default) or `'hover'` — the example keeps agent nameplates always-on and
   shows object labels only on hover.
-- Agent chips render just below the feet — with the agent under its desk
-  this lands at the bottom edge of the workstation, like a desk nameplate.
-  Style it via `theme.agentLabel` (the day theme uses a light plate +
-  dark text); font size lives in `agentLabel.fontSize` /
+- Agent chips render below the feet anchor; `theme.agentLabelOffsetY`
+  pushes them further down past the desk block so they read as a
+  **nameplate on the desk's front edge** (the example uses `22` with 32px
+  desk tiles). Style the plaque via `theme.agentLabel` — the example uses a
+  dark plate, light text and a brass `borderColor` so plates never blend
+  into the floor; font size lives in `agentLabel.fontSize` /
   `objectLabel.fontSize`.
 - `theme.statusBadgeScale` scales the status pills;
-  `theme.statusBadgeOffsetY` lifts them above the agent — the example uses
-  `44` so badges float clear of the monitor that now sits above each agent.
-  `statusBadgeText: false` switches badges to dot-only.
+  `theme.statusBadgeOffsetY` adds air between the sprite top and the badge —
+  with front-facing agents nothing sits above their heads, so the example
+  uses `2`. `statusBadgeText: false` switches badges to dot-only.
 - Per-entity opt-out: `showLabel: false` on any agent/object entry.
 - `labels.floor: false` (example default) — no decorative floor text; zones
   read through layout and furniture instead.
@@ -82,11 +86,12 @@ Nothing else changes — entity code references assets only by key.
 ## Add a new agent role
 
 1. Add a style to `ROLE_STYLES` in `tools/lib/palette.mjs` (skin/hair/top/
-   accent + `hairStyle`: `short`/`long`/`ponytail`/`bun` + optional
-   accessory: `cap`, `headset`; `executive: true` gives the tall command
-   chair) and run `npm run generate:assets` — you get `agent-<role>.png`
-   for free. Remember the agent is seen from behind: differentiate roles
-   with hair, shirt color and head-level accessories.
+   accent + `hairStyle`: `short`/`slick`/`long`/`ponytail`/`bun`/`curly` +
+   `outfit`: `tee`/`hoodie`/`blazer`/`shirt_tie`/`turtleneck`/`vest`/`suit`
+   + optional accessory: `glasses`, `cap`, `headset`; `executive: true`
+   gives the tall winged command chair) and run `npm run generate:assets` —
+   you get `agent-<role>.png` for free. Agents face the viewer:
+   differentiate roles with hair, outfit and face-level accessories.
 2. Register `{ key: 'agent:<role>', url: ... }` in the scene config assets.
 3. Use the role in an `agents` entry. Custom role strings are allowed by the
    schema; nothing in the kit needs patching.

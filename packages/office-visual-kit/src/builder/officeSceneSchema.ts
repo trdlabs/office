@@ -23,6 +23,12 @@ export interface OfficeSceneThemeLabelStyle {
   backgroundColor: string;
   backgroundAlpha: number;
   fontSize: number;
+  /**
+   * Optional chip border ("desk nameplate" look). Hover/selection highlight
+   * temporarily overrides it with the theme highlight color.
+   */
+  borderColor?: string;
+  borderAlpha?: number;
 }
 
 export interface OfficeSceneTheme {
@@ -53,6 +59,13 @@ export interface OfficeSceneTheme {
    * the agent so badges float clear of the workstation.
    */
   statusBadgeOffsetY?: number;
+  /**
+   * Extra world-space pixels between the agent's feet anchor and its label
+   * chip (default 0). On floors where the agent sits BEHIND its desk
+   * (front-facing workstations), set this to the desk-block height so the
+   * chip reads as a nameplate on the desk's front edge.
+   */
+  agentLabelOffsetY?: number;
   agentLabel?: Partial<OfficeSceneThemeLabelStyle>;
   objectLabel?: Partial<OfficeSceneThemeLabelStyle>;
 }

@@ -2,78 +2,138 @@ import { Img, upscale } from './img.mjs';
 import { PAL, ROLE_STYLES } from './palette.mjs';
 
 /**
- * Original back-facing seated agents (LPC-inspired silhouettes, fully
- * original pixels). Drawn on a logical 16-px grid and upscaled ×2 — final
- * frames are 32×44 (Boss: 32×48 in the tall executive chair).
+ * Original front-facing seated agents (LPC-inspired proportions, fully
+ * original pixels — no LPC Generator output is imported; see ASSETS.md for
+ * the optional real-LPC drop-in path).
  *
- * The agent is seen from behind / slightly above, facing its desk: the
- * viewer sees hair, shoulders and the office chair backrest. The chair is
- * part of the sprite, so a workstation always lines up: desk tiles above,
- * agent tucked in below, never "standing on the desk".
+ * Visual Iteration 3 turns the workstations around: the agent now sits
+ * BEHIND the desk and faces the viewer. The sprite is a seated bust — head,
+ * face (eyes!), shoulders, upper torso and the chair back peeking out at
+ * the sides. Its bottom edge is the desk cut: the feet anchor (spawn point)
+ * sits exactly on the desk block's top edge, so the desk + laptop visually
+ * cover the lap and the scene reads as "agent works at a computer".
  *
- * Roles read through hair style + color, shirt color on the shoulders and
- * head-level accessories (cap, headset, bun, ponytail) — no front-face
- * details needed. Two idle frames: a subtle 1-px head bob.
+ * Drawn on a logical 16-px grid, upscaled ×2: standard frames are 32×36,
+ * the Boss is 32×40 in a tall executive chair. Roles read through hair
+ * style/color, outfit (hoodie, blazer, shirt+tie, tee, turtleneck, suit)
+ * and accessories that survive the front view: glasses, cap, headset.
+ * Two idle frames: a subtle 1-px breathing bob (chair stays still).
  */
 
 export const AGENT_FRAMES = 2;
 
 const O = PAL.outline;
+const SHADOW = '#00000028';
 
-/** Big chunky head from behind: hair block with a 1-px outline. */
-function drawHead(img, style, bob) {
-  const y = 1 + bob;
-  // outlined hair block (10 wide — LPC-ish big head)
-  img.rect(3, y, 10, 7, O);
-  img.rect(4, y + 1, 8, 5, style.hair);
-  img.hline(4, 11, y + 1, style.hair);
+/** Front-facing head: hair + face + eyes. `y` is the hair top row. */
+function drawHead(img, style, y) {
+  // head block with outline (10 wide, 8 tall)
+  img.rect(3, y, 10, 8, O);
+  img.rect(4, y + 1, 8, 6, style.skin);
+  // hair cap over the top of the head
+  img.rect(4, y + 1, 8, 2, style.hair);
   img.hline(5, 10, y, style.hair);
-  // shading toward the nape
-  img.hline(4, 11, y + 5, style.hairShade);
-  // ear tips
-  img.px(3, y + 3, style.skin);
-  img.px(12, y + 3, style.skin);
 
   switch (style.hairStyle) {
     case 'short':
-      // nape of the neck visible under short hair
-      img.rect(6, y + 6, 4, 1, style.skin);
+      img.px(4, y + 3, style.hair);
+      img.px(11, y + 3, style.hair);
+      img.px(4, y + 2, style.hairShade);
+      break;
+    case 'slick':
+      // high forehead, combed back, side part line
+      img.hline(5, 10, y + 1, style.hair);
+      img.px(6, y + 1, style.hairShade);
+      img.px(4, y + 3, style.hair);
+      img.px(11, y + 3, style.hair);
       break;
     case 'long':
-      // hair flows over the shoulders (drawn before the backrest)
-      img.rect(3, y + 7, 2, 4, style.hair);
-      img.rect(11, y + 7, 2, 4, style.hair);
-      img.px(3, y + 10, style.hairShade);
-      img.px(12, y + 10, style.hairShade);
-      break;
-    case 'ponytail':
-      img.rect(6, y + 6, 4, 1, style.skin);
-      img.rect(7, y + 5, 2, 7, style.hairShade);
-      img.hline(7, 8, y + 5, style.accent); // hair tie
+      // curtains framing the face, flowing outside the head down to the
+      // shoulders (drawn over the chair back — the contrast carries them)
+      img.vline(3, y + 1, y + 6, style.hair);
+      img.vline(12, y + 1, y + 6, style.hair);
+      img.vline(2, y + 2, y + 8, style.hair);
+      img.vline(13, y + 2, y + 8, style.hair);
+      img.px(2, y + 8, style.hairShade);
+      img.px(13, y + 8, style.hairShade);
       break;
     case 'bun':
-      img.rect(6, y - 1, 4, 2, style.hairShade);
-      img.outline(6, y - 1, 4, 2, O);
+      // bun on top (2 rows tall so it survives the outline) + tidy sides
+      img.rect(6, y - 2, 4, 2, style.hair);
+      img.outline(6, y - 2, 4, 2, O);
+      img.px(7, y - 1, style.hair);
+      img.px(8, y - 1, style.hairShade);
+      img.px(4, y + 3, style.hair);
+      img.px(11, y + 3, style.hair);
       break;
+    case 'ponytail':
+      // tail thrown over the right shoulder
+      img.px(4, y + 3, style.hair);
+      img.px(11, y + 3, style.hair);
+      img.vline(13, y + 4, y + 9, style.hairShade);
+      img.px(12, y + 3, style.hair);
+      img.px(13, y + 4, style.accent); // hair tie
+      break;
+    case 'curly': {
+      // bumpy silhouette
+      for (const [cx, cy] of [
+        [3, y + 1],
+        [12, y + 1],
+        [2, y + 2],
+        [13, y + 2],
+        [4, y + 3],
+        [11, y + 3],
+      ]) {
+        img.px(cx, cy, style.hair);
+      }
+      img.px(2, y + 3, style.hairShade);
+      img.px(13, y + 3, style.hairShade);
+      break;
+    }
     default:
       break;
   }
+  // hairline shading
+  img.hline(5, 10, y + 2, style.hairShade);
+
+  // face: eyes + a hint of a mouth
+  img.px(6, y + 4, PAL.eye);
+  img.px(9, y + 4, PAL.eye);
+  img.hline(7, 8, y + 6, SHADOW);
 
   switch (style.accessory) {
+    case 'glasses': {
+      // tinted lenses with a glint, joined by a bridge — one clean strip
+      const lens = '#2b3a4c';
+      const glint = '#9fc4dd';
+      const rim = '#1d212b';
+      img.rect(5, y + 4, 2, 1, lens);
+      img.rect(9, y + 4, 2, 1, lens);
+      img.px(5, y + 4, glint);
+      img.px(9, y + 4, glint);
+      img.px(7, y + 4, rim);
+      img.px(8, y + 4, rim);
+      img.px(4, y + 4, rim);
+      img.px(11, y + 4, rim);
+      break;
+    }
     case 'cap': {
-      img.rect(4, y, 8, 3, style.accent);
-      img.hline(5, 10, y - 0, style.accent);
-      img.hline(4, 11, y + 2, style.topShade);
-      // adjuster hole at the back of the cap
-      img.rect(7, y + 1, 2, 1, style.hairShade);
+      // crown over the hair + front brim across the forehead
+      img.rect(4, y, 8, 2, style.accent);
+      img.hline(5, 10, y - 1, style.accent);
+      img.outline(4, y - 1, 8, 3, O);
+      img.hline(3, 12, y + 2, style.accentShade ?? style.topShade);
+      img.px(3, y + 2, O);
+      img.px(12, y + 2, O);
       break;
     }
     case 'headset': {
       const dark = '#1d212b';
-      img.hline(4, 11, y, dark);
-      img.rect(2, y + 3, 2, 3, dark);
-      img.rect(12, y + 3, 2, 3, dark);
-      img.px(13, y + 5, PAL.green);
+      img.hline(4, 11, y, dark); // band over the hair
+      img.rect(2, y + 3, 2, 3, dark); // left cup
+      img.rect(12, y + 3, 2, 3, dark); // right cup
+      img.px(12, y + 6, dark); // mic arm
+      img.px(11, y + 7, PAL.green); // mic tip LED
       break;
     }
     default:
@@ -82,80 +142,133 @@ function drawHead(img, style, bob) {
 }
 
 /**
- * Shoulders seen from behind. Arms stay hidden behind the chair backrest —
- * a clean silhouette reads better than floating arm pixels.
+ * Shoulders + upper torso, front view. Arms rest forward on the desk, so
+ * only the upper arms show at the sides. `y` = shoulder row; the torso runs
+ * to the bottom of the frame (the desk cut).
  */
-function drawTorso(img, style, bob) {
-  img.rect(3, 7 + bob, 10, 6, O);
-  img.rect(4, 8 + bob, 8, 4, style.top);
-  img.hline(4, 11, 11 + bob, style.topShade);
+function drawTorso(img, style, y, bottom) {
+  const h = bottom - y;
+  img.rect(2, y, 12, h, O);
+  img.rect(3, y + 1, 10, h - 1, style.top);
+  // upper arms at the sides
+  img.vline(3, y + 2, bottom - 1, style.topShade);
+  img.vline(12, y + 2, bottom - 1, style.topShade);
+  // neck
+  img.rect(7, y - 1, 2, 1, style.skin);
+
+  switch (style.outfit) {
+    case 'hoodie':
+      // hood ridge behind the neck + drawstrings
+      img.hline(5, 10, y, style.topShade);
+      img.px(6, y + 2, PAL.paper);
+      img.px(9, y + 2, PAL.paper);
+      img.px(6, y + 3, PAL.paper);
+      img.px(9, y + 3, PAL.paper);
+      break;
+    case 'shirt_tie':
+      // collar V + tie
+      img.px(6, y + 1, PAL.paper);
+      img.px(9, y + 1, PAL.paper);
+      img.vline(7, y + 1, y + 4, style.accent);
+      img.vline(8, y + 1, y + 4, style.accent);
+      img.px(7, y + 5, style.accent);
+      img.px(8, y + 5, style.accent);
+      break;
+    case 'blazer':
+      // lapels open over a light shirt
+      img.rect(6, y + 1, 4, h - 2, PAL.paper);
+      img.vline(5, y + 1, bottom - 2, style.topShade);
+      img.vline(10, y + 1, bottom - 2, style.topShade);
+      img.px(6, y + 1, style.top);
+      img.px(9, y + 1, style.top);
+      break;
+    case 'turtleneck':
+      // high collar under the chin
+      img.rect(6, y - 1, 4, 1, style.top);
+      img.hline(6, 9, y, style.topShade);
+      break;
+    case 'vest':
+      // vest over a shirt: light sleeves
+      img.vline(3, y + 1, bottom - 1, PAL.paperShade);
+      img.vline(12, y + 1, bottom - 1, PAL.paperShade);
+      img.hline(4, 11, y + 1, style.topShade);
+      break;
+    case 'suit':
+      // jacket lapels + shirt + tie
+      img.rect(7, y + 1, 2, h - 2, PAL.paper);
+      img.vline(6, y + 1, y + 3, style.topShade);
+      img.vline(9, y + 1, y + 3, style.topShade);
+      img.vline(7, y + 2, y + 5, style.accent);
+      img.vline(8, y + 2, y + 5, style.accent);
+      break;
+    default:
+      // plain tee: collar shade
+      img.hline(6, 9, y, style.topShade);
+      break;
+  }
 }
 
-/** Standard office task chair: backrest covers the lower torso. */
-function drawChair(img) {
-  // backrest
-  img.rect(2, 11, 12, 8, O);
-  img.rect(3, 12, 10, 6, PAL.chair);
-  img.hline(3, 12, 12, PAL.chairHi);
-  img.hline(3, 12, 17, PAL.chairDark);
-  // gas column + star base
-  img.rect(7, 19, 2, 2, PAL.chairLeg);
-  img.hline(4, 11, 21, PAL.chairLeg);
-  img.px(3, 21, PAL.chairLeg);
-  img.px(12, 21, PAL.chairLeg);
+/** Standard task chair, front view: back + armrests peeking out. */
+function drawChair(img, top, bottom) {
+  // high back behind the body
+  img.rect(1, top, 14, bottom - top, PAL.chairDark);
+  img.outline(1, top, 14, bottom - top, O);
+  img.hline(2, 13, top + 1, PAL.chairHi);
+  // armrests
+  img.rect(0, bottom - 5, 2, 4, O);
+  img.px(0, bottom - 4, PAL.chair);
+  img.px(1, bottom - 4, PAL.chair);
+  img.rect(14, bottom - 5, 2, 4, O);
+  img.px(14, bottom - 4, PAL.chair);
+  img.px(15, bottom - 4, PAL.chair);
 }
 
-/** Tall executive chair for the Boss: wings + headrest + gold trim. */
-function drawExecChair(img) {
-  // headrest behind the head (drawn before the head)
-  img.rect(4, 5, 8, 4, O);
-  img.rect(5, 6, 6, 2, PAL.execChairDark);
-  // tall backrest with wings above the shoulders
-  img.rect(1, 12, 14, 9, O);
-  img.rect(2, 13, 12, 7, PAL.execChair);
-  img.hline(2, 13, 13, PAL.gold);
-  img.vline(2, 14, 19, PAL.execChairHi);
-  img.vline(13, 14, 19, PAL.execChairDark);
-  // wings
-  img.rect(1, 10, 2, 3, O);
-  img.px(1, 11, PAL.execChair);
-  img.px(2, 11, PAL.execChair);
-  img.rect(13, 10, 2, 3, O);
-  img.px(14, 11, PAL.execChair);
-  img.px(13, 11, PAL.execChair);
-  // column + star base
-  img.rect(7, 21, 2, 2, PAL.chairLeg);
-  img.hline(3, 12, 23, PAL.chairLeg);
-  img.px(2, 23, PAL.chairLeg);
-  img.px(13, 23, PAL.chairLeg);
+/** Tall executive chair: wings above the shoulders + gold studs. */
+function drawExecChair(img, top, bottom) {
+  img.rect(0, top, 16, bottom - top, PAL.execChairDark);
+  img.outline(0, top, 16, bottom - top, O);
+  img.hline(1, 14, top + 1, PAL.execChairHi);
+  // winged top corners rise beside the head
+  img.rect(0, top, 3, 3, PAL.execChair);
+  img.rect(13, top, 3, 3, PAL.execChair);
+  img.px(1, top + 1, PAL.gold);
+  img.px(14, top + 1, PAL.gold);
+  // gold studs down the sides
+  img.px(1, bottom - 4, PAL.gold);
+  img.px(14, bottom - 4, PAL.gold);
 }
 
 function drawStandardAgent(img, style, bob) {
-  drawTorso(img, style, bob);
-  drawHead(img, style, bob);
-  drawChair(img);
+  const bottom = 18;
+  drawChair(img, 6, bottom);
+  drawTorso(img, style, 10 + bob, bottom);
+  drawHead(img, style, 2 + bob);
 }
 
 function drawBoss(img, style, bob) {
-  drawExecChair(img);
-  // suit shoulders, slightly wider
-  img.rect(2, 8 + bob, 12, 6, O);
-  img.rect(3, 9 + bob, 10, 4, style.top);
-  img.hline(3, 12, 12 + bob, style.topShade);
-  // gold collar peeking over the suit
-  img.px(7, 9 + bob, style.accent);
-  img.px(8, 9 + bob, style.accent);
-  drawHead(img, style, bob + 1);
-  // re-draw backrest top over the torso bottom so he sits IN the chair
-  img.hline(2, 13, 14, PAL.execChair);
-  img.hline(2, 13, 13, PAL.gold);
+  const bottom = 20;
+  drawExecChair(img, 2, bottom);
+  // wider suit shoulders
+  const y = 11 + bob;
+  img.rect(1, y, 14, bottom - y, O);
+  img.rect(2, y + 1, 12, bottom - y - 1, style.top);
+  img.vline(2, y + 2, bottom - 1, style.topShade);
+  img.vline(13, y + 2, bottom - 1, style.topShade);
+  img.rect(7, y - 1, 2, 1, style.skin);
+  // shirt + gold tie
+  img.rect(7, y + 1, 2, bottom - y - 2, PAL.paper);
+  img.vline(6, y + 1, y + 3, style.topShade);
+  img.vline(9, y + 1, y + 3, style.topShade);
+  img.vline(7, y + 2, y + 6, style.accent);
+  img.vline(8, y + 2, y + 6, style.accent);
+  drawHead(img, style, 3 + bob);
 }
 
-/** @returns {Img} one upscaled frame (32×44, Boss 32×48) */
+/** @returns {Img} one upscaled frame (32×36, Boss 32×40) */
 export function drawAgentFrame(role, bob) {
   const style = ROLE_STYLES[role];
   if (!style) throw new Error(`No agent style for role "${role}"`);
-  const logical = new Img(16, style.executive ? 24 : 22);
+  const logical = new Img(16, style.executive ? 20 : 18);
   if (style.executive) drawBoss(logical, style, bob);
   else drawStandardAgent(logical, style, bob);
   return upscale(logical, 2);

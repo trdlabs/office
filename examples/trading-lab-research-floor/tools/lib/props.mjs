@@ -137,40 +137,10 @@ function serverRack(frame) {
   return upscale(img, 2);
 }
 
-function bossConsole(frame) {
-  const img = new Img(64, 20);
-  // wide command desk — tall enough that the monitors sit ON it
-  img.rect(2, 6, 60, 9, PAL.consoleTop);
-  img.hline(3, 60, 6, PAL.consoleTopHi);
-  img.rect(2, 15, 60, 3, PAL.consoleFace);
-  img.hline(2, 61, 14, PAL.gold);
-  img.outline(2, 6, 60, 12, '#2b2448');
-  img.rect(6, 18, 4, 2, PAL.consoleLeg);
-  img.rect(54, 18, 4, 2, PAL.consoleLeg);
-  // three monitors facing the Boss (south), one glyph each
-  const screen = (x, y, w, h) => {
-    img.rect(x, y, w, h, PAL.bezelDark);
-    img.outline(x, y, w, h, '#10131c');
-    img.rect(x + 1, y + 1, w - 2, h - 2, '#0d0a20');
-  };
-  screen(7, 1, 14, 8);
-  screen(25, 0, 14, 9);
-  screen(43, 1, 14, 8);
-  // left: cyan task lines
-  img.hline(10, 17, 3, frame === 0 ? PAL.cyan : PAL.cyanDim);
-  img.hline(10, 14, 6, PAL.cyanDim);
-  // center: violet node triangle
-  img.px(31, 2, frame === 0 ? PAL.violet : PAL.violetDim);
-  img.px(28, 6, PAL.violetDim);
-  img.px(34, 6, frame === 0 ? PAL.violetDim : PAL.violet);
-  img.line(28, 6, 31, 2, '#46356e');
-  img.line(31, 2, 34, 6, '#46356e');
-  // right: gold bars
-  img.rect(46, 5, 2, 3, PAL.goldDim);
-  img.rect(49, 3, 2, 5, frame === 0 ? PAL.gold : PAL.goldDim);
-  img.rect(52, 6, 2, 2, PAL.goldDim);
-  return upscale(img, 2);
-}
+// NOTE: the boss command console is no longer a sprite prop. It is drawn as
+// furniture tiles (`console_*` in tiles.mjs) so the Boss's nameplate chip,
+// which lives in the entity layer, always renders above it; the
+// `boss-console` map object is a pure hit-area over those tiles.
 
 export const PROP_DEFS = [
   { name: 'wall-monitor', draw: wallMonitor, width: 96, height: 48 },
@@ -178,5 +148,4 @@ export const PROP_DEFS = [
   { name: 'bot-status-monitor', draw: botStatusMonitor, width: 48, height: 64 },
   { name: 'archive-shelf', draw: archiveShelf, width: 64, height: 64 },
   { name: 'server-rack', draw: serverRack, width: 56, height: 88 },
-  { name: 'boss-console', draw: bossConsole, width: 128, height: 40 },
 ];

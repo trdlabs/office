@@ -12,10 +12,10 @@ import { nightify, PAL } from './palette.mjs';
  * derived via `nightify()` (see palette.mjs). Tiles that need real night art
  * (windows) are `themed` and draw per theme.
  *
- * Workstations are turned away from the viewer: the desk is a 2×2-tile
- * block (monitor upper half, desk + keyboard lower half) and the agent sits
- * BELOW it, facing the screen. Screens carry a single glowing glyph — no
- * fake charts.
+ * Workstations face the viewer (Iteration 3): the desk is a 2×1-tile block
+ * with a laptop on it, lid back toward the viewer, and the agent sits
+ * BEHIND it (one row up), front-facing. The laptop lid carries a single
+ * glowing glyph — a generic mark, no real-world logo, no fake charts.
  */
 
 export const TILE_SIZE = 32;
@@ -104,6 +104,28 @@ const BOSS_RUG_COLORS = {
   edge: PAL.brugEdge,
   corner: PAL.brugGold,
 };
+
+/** Cool office carpet under the desk wings — contrast against the planks. */
+const WORK_CARPET_COLORS = {
+  base: PAL.crug,
+  dot: PAL.crugDot,
+  border: PAL.crugBorder,
+  edge: PAL.crugEdge,
+};
+
+/** Raised tech floor inside the glass server room. */
+function techFloor(img) {
+  img.rect(0, 0, 16, 16, PAL.techFloor);
+  for (let i = 0; i < 16; i += 8) {
+    img.hline(0, 15, i + 7, PAL.techSeam);
+    img.vline(i + 7, 0, 15, PAL.techSeam);
+  }
+  img.px(2, 2, PAL.techFloorHi);
+  img.px(11, 5, PAL.techFloorHi);
+  img.px(5, 12, PAL.techFloorHi);
+  // one status LED per tile — glows at night via the emissive pass
+  img.px(13, 10, PAL.cyan);
+}
 
 const RUG_EDGES = {
   tl: { top: true, left: true },
@@ -326,8 +348,8 @@ function vendingBig() {
 }
 
 // ---------------------------------------------------------------------------
-// workstation desks (2×2 tiles: monitor above, desk + keyboard below;
-// the agent sits in front, facing the screen)
+// workstation desks (2×1 tiles: desk surface + laptop, lid back toward the
+// viewer; the agent sits BEHIND the desk, one row up, facing the viewer)
 // ---------------------------------------------------------------------------
 
 const _desks = new Map();
@@ -335,74 +357,194 @@ const _desks = new Map();
 function deskBig(variant) {
   const cached = _desks.get(variant);
   if (cached) return cached;
-  const img = new Img(32, 32);
+  const img = new Img(32, 16); // logical 32×16 → 64×32 px (2×1 tiles)
 
-  // --- lower half: the desk itself -----------------------------------------
-  img.rect(2, 16, 28, 11, PAL.deskTop);
-  img.hline(2, 29, 16, PAL.deskHi);
-  img.hline(2, 29, 17, PAL.deskHi);
-  img.hline(3, 28, 21, PAL.deskGrain);
-  img.hline(3, 28, 24, PAL.deskGrain);
-  img.hline(2, 29, 26, PAL.deskDark);
-  img.vline(2, 16, 26, PAL.deskDark);
-  img.vline(29, 16, 26, PAL.deskDark);
-  // front face + legs
-  img.rect(3, 27, 26, 3, PAL.deskFace);
-  img.hline(3, 28, 29, PAL.deskDark);
-  img.rect(4, 30, 2, 2, PAL.deskLeg);
-  img.rect(26, 30, 2, 2, PAL.deskLeg);
+  // --- desk body: surface + front face, outlined dark -----------------------
+  img.rect(1, 4, 30, 10, PAL.deskTop);
+  img.hline(2, 29, 4, PAL.deskHi);
+  img.hline(2, 29, 5, PAL.deskHi);
+  img.hline(3, 28, 8, PAL.deskGrain);
+  img.hline(3, 28, 10, PAL.deskGrain);
+  // front face
+  img.rect(2, 11, 28, 3, PAL.deskFace);
+  img.hline(2, 29, 11, PAL.deskDark);
+  img.outline(1, 4, 30, 10, PAL.deskOutline);
+  // legs
+  img.rect(3, 14, 2, 2, PAL.deskLeg);
+  img.rect(27, 14, 2, 2, PAL.deskLeg);
 
-  // --- monitor centred on the seam, screen facing the agent ----------------
-  img.rect(15, 14, 2, 3, PAL.bezelDark); // stand
-  img.hline(13, 18, 17, PAL.bezelDark); // foot
-  img.rect(10, 3, 12, 12, PAL.bezel);
-  img.outline(10, 3, 12, 12, PAL.bezelDark);
-  img.hline(11, 20, 4, PAL.bezelHi);
-  img.rect(12, 5, 8, 8, PAL.screen);
+  // --- laptop centred, lid back toward the viewer ---------------------------
+  // The lid rises above the desk edge so it overlaps the agent's chest.
+  img.rect(12, 0, 8, 7, PAL.bezel);
+  img.outline(12, 0, 8, 7, PAL.bezelDark);
+  img.hline(13, 18, 1, PAL.bezelHi);
+  // hinge + base peeking out at the bottom of the lid
+  img.hline(11, 20, 7, PAL.bezelDark);
+  img.hline(12, 19, 8, PAL.bezelHi);
 
-  // a single glowing glyph — no fake charts
+  // a single glowing mark on the lid — generic, no real-world logo
   if (variant === 'a') {
-    // tiny equalizer pulse
-    img.rect(14, 10, 1, 2, PAL.cyanDim);
-    img.rect(16, 8, 1, 4, PAL.cyan);
-    img.rect(18, 9, 1, 3, PAL.cyanDim);
+    // pulse bars
+    img.rect(14, 3, 1, 2, PAL.cyanDim);
+    img.rect(16, 2, 1, 3, PAL.cyan);
+    img.rect(18, 3, 1, 2, PAL.cyanDim);
   } else {
-    // terminal prompt
-    img.px(13, 7, PAL.green);
-    img.px(14, 8, PAL.green);
-    img.px(13, 9, PAL.green);
-    img.rect(16, 9, 2, 1, PAL.greenDim);
+    // terminal chevron
+    img.px(14, 2, PAL.green);
+    img.px(15, 3, PAL.green);
+    img.px(14, 4, PAL.green);
+    img.rect(17, 4, 2, 1, PAL.greenDim);
   }
-
-  // --- keyboard + mouse at the agent edge -----------------------------------
-  img.rect(11, 20, 10, 3, PAL.keyboard);
-  img.outline(11, 20, 10, 3, PAL.keyboardDark);
-  for (let x = 12; x <= 19; x += 2) img.px(x, 21, PAL.keyboardKeys);
-  img.rect(23, 21, 2, 2, PAL.keyboard);
-  img.px(23, 21, PAL.keyboardDark);
 
   // --- desk dressing per variant --------------------------------------------
   if (variant === 'a') {
     // mug with steam
-    img.rect(5, 18, 3, 3, PAL.mug);
-    img.hline(5, 7, 18, PAL.mugHi);
-    img.px(8, 19, PAL.mug);
-    img.px(6, 16, PAL.steam);
+    img.rect(24, 5, 3, 3, PAL.mug);
+    img.hline(24, 26, 5, PAL.mugHi);
+    img.px(27, 6, PAL.mug);
+    img.px(25, 3, PAL.steam);
   } else {
-    // papers + tiny succulent
-    img.rect(4, 18, 5, 4, PAL.paper);
-    img.px(4, 21, PAL.paperShade);
-    img.hline(5, 7, 19, PAL.paperLine);
-    img.hline(5, 7, 20, PAL.paperLine);
-    img.rect(26, 20, 3, 2, PAL.pot);
-    img.px(27, 18, PAL.leaf);
-    img.px(26, 19, PAL.leafDark);
-    img.px(28, 19, PAL.leafHi);
+    // papers + pen
+    img.rect(4, 6, 5, 3, PAL.paper);
+    img.px(4, 8, PAL.paperShade);
+    img.hline(5, 7, 7, PAL.paperLine);
+    img.rect(25, 6, 3, 1, PAL.steelPanel);
   }
 
   const up = upscale(img, 2);
   _desks.set(variant, up);
   return up;
+}
+
+// ---------------------------------------------------------------------------
+// boss command console (4×1 tiles). Drawn as tiles — not a sprite object —
+// so the Boss's nameplate chip (rendered in the entity layer) always draws
+// above it. The Boss sits BEHIND it facing the viewer: the three command
+// monitors show their BACKS (vents, stands, status LEDs — no fake charts).
+// ---------------------------------------------------------------------------
+
+let _console = null;
+
+function consoleBig() {
+  if (_console) return _console;
+  const img = new Img(64, 16); // logical 64×16 → 128×32 px (4×1 tiles)
+  // wide command desk
+  img.rect(1, 8, 62, 7, PAL.consoleTop);
+  img.hline(2, 61, 8, PAL.consoleTopHi);
+  img.rect(2, 12, 60, 3, PAL.consoleFace);
+  img.hline(2, 61, 12, PAL.gold);
+  img.outline(1, 8, 62, 7, '#2b2448');
+  img.rect(4, 15, 3, 1, PAL.consoleLeg);
+  img.rect(57, 15, 3, 1, PAL.consoleLeg);
+  // three monitor backs (center one slightly taller)
+  const back = (x, y, h, led) => {
+    img.rect(x, y, 14, h, PAL.bezel);
+    img.outline(x, y, 14, h, '#10131c');
+    img.hline(x + 1, x + 12, y + 1, PAL.bezelHi);
+    img.hline(x + 3, x + 10, y + 3, PAL.bezelDark);
+    img.hline(x + 3, x + 10, y + 5, PAL.bezelDark);
+    img.rect(x + 6, y + h, 2, Math.max(1, 9 - (y + h)), PAL.bezelDark); // stand
+    img.px(x + 11, y + h - 2, led);
+  };
+  back(7, 2, 6, PAL.cyan);
+  back(25, 1, 7, PAL.violet);
+  back(43, 2, 6, PAL.gold);
+  // screen glow spilling over the top edges (screens face the Boss)
+  img.hline(9, 19, 1, PAL.cyanDark);
+  img.hline(27, 37, 0, '#46356e');
+  img.hline(45, 55, 1, PAL.goldDim);
+  return (_console = upscale(img, 2));
+}
+
+// ---------------------------------------------------------------------------
+// glass partition (infra/server room) — translucent panes over the floor
+// ---------------------------------------------------------------------------
+
+/** Horizontal run of the glass partition (wall runs east-west). */
+function glassWallH(img) {
+  // top cap (seen from above)
+  img.rect(0, 2, 16, 2, PAL.glassFrame);
+  img.hline(0, 15, 2, PAL.glassFrameHi);
+  // pane
+  img.rect(1, 4, 14, 8, PAL.glassPane);
+  img.px(3, 5, PAL.glassPaneHi);
+  img.px(4, 6, PAL.glassPaneHi);
+  img.px(10, 8, PAL.glassPaneHi);
+  // posts at the tile edges
+  img.vline(0, 2, 13, PAL.glassFrameDark);
+  img.vline(15, 2, 13, PAL.glassFrameDark);
+  // base rail
+  img.rect(0, 12, 16, 2, PAL.glassFrame);
+  img.hline(0, 15, 13, PAL.glassFrameDark);
+}
+
+/** Sliding glass door leaf; `side` = 'l' | 'r' (handle on the inner edge). */
+function glassDoor(img, side) {
+  glassWallH(img);
+  const inner = side === 'l' ? 13 : 2;
+  // handle bar + sensor LED
+  img.vline(inner, 4, 11, PAL.glassFrameHi);
+  img.px(inner, 6, PAL.cyan);
+  // mark the leaf gap between the two door tiles
+  const edge = side === 'l' ? 15 : 0;
+  img.vline(edge, 3, 12, PAL.glassFrameHi);
+}
+
+/** Vertical run (wall runs north-south): a narrow framed band. */
+function glassWallV(img) {
+  img.rect(6, 0, 4, 16, PAL.glassPane);
+  img.vline(6, 0, 15, PAL.glassFrameDark);
+  img.vline(9, 0, 15, PAL.glassFrameHi);
+  img.px(7, 3, PAL.glassPaneHi);
+  img.px(8, 9, PAL.glassPaneHi);
+  img.px(7, 13, PAL.glassPaneHi);
+}
+
+/** Corner where the horizontal partition meets a vertical side wall. */
+function glassCorner(img) {
+  glassWallH(img);
+  // stub running south to meet the vertical wall in the tile below
+  img.rect(6, 12, 4, 4, PAL.glassPane);
+  img.vline(6, 12, 15, PAL.glassFrameDark);
+  img.vline(9, 12, 15, PAL.glassFrameHi);
+}
+
+// ---------------------------------------------------------------------------
+// big water cooler (1×2 tiles — recognizable from across the room)
+// ---------------------------------------------------------------------------
+
+function waterCoolerBig() {
+  const img = new Img(16, 32);
+  // big bottle
+  img.rect(4, 2, 8, 10, PAL.bottle);
+  img.outline(4, 2, 8, 10, '#6da8c8');
+  img.rect(5, 3, 2, 6, PAL.bottleHi);
+  img.hline(5, 10, 9, '#7fc2e2');
+  // neck + collar
+  img.rect(6, 12, 4, 2, '#6da8c8');
+  // unit body
+  img.rect(3, 14, 10, 14, PAL.cooler);
+  img.outline(3, 14, 10, 14, PAL.coolerDark);
+  img.vline(4, 15, 26, '#eef3f7');
+  // dispense recess + taps
+  img.rect(5, 16, 6, 4, PAL.coolerShade);
+  img.px(6, 16, '#5878b8');
+  img.px(9, 16, PAL.redDim);
+  img.rect(7, 19, 2, 1, PAL.coolerDark); // drip tray
+  // vents
+  img.hline(5, 10, 23, PAL.coolerDark);
+  img.hline(5, 10, 25, PAL.coolerDark);
+  // feet
+  img.rect(4, 28, 2, 2, PAL.coolerDark);
+  img.rect(10, 28, 2, 2, PAL.coolerDark);
+  return upscale(img, 2);
+}
+
+let _cooler = null;
+
+function coolerBigCached() {
+  if (!_cooler) _cooler = waterCoolerBig();
+  return _cooler;
 }
 
 // ---------------------------------------------------------------------------
@@ -446,6 +588,13 @@ export const TILE_DEFS = [
     name: `brug_${key}`,
     draw: chunky((img) => rugTile(img, edges, BOSS_RUG_COLORS)),
   })),
+  // work-zone carpet under the desk wings (9-slice like the boss rug)
+  ...Object.entries(RUG_EDGES).map(([key, edges]) => ({
+    name: `crug_${key}`,
+    draw: chunky((img) => rugTile(img, edges, WORK_CARPET_COLORS)),
+  })),
+  // raised tech floor inside the glass server room
+  { name: 'floor_tech', draw: chunky(techFloor) },
   { name: 'wall_top', draw: chunky(wallCap) },
   { name: 'wall_face_u', draw: chunky(wallFaceUpper) },
   { name: 'wall_face_l', draw: chunky(wallFaceLower) },
@@ -515,15 +664,28 @@ export const TILE_DEFS = [
       copyRegion(img, doorBig(), (i % 2) * 32, Math.floor(i / 2) * 32);
     },
   })),
-  // 2×2 workstation desks, two dressing variants
+  // 2×1 workstation desks (laptop on top), two dressing variants
   ...['a', 'b'].flatMap((variant) =>
-    ['tl', 'tr', 'bl', 'br'].map((corner, i) => ({
-      name: `desk_${variant}_${corner}`,
+    ['l', 'r'].map((side, i) => ({
+      name: `desk_${variant}_${side}`,
       draw(img) {
-        copyRegion(img, deskBig(variant), (i % 2) * 32, Math.floor(i / 2) * 32);
+        copyRegion(img, deskBig(variant), i * 32, 0);
       },
     })),
   ),
+  // 4×1 boss command console (monitor backs toward the viewer)
+  ...['l', 'ml', 'mr', 'r'].map((part, i) => ({
+    name: `console_${part}`,
+    draw(img) {
+      copyRegion(img, consoleBig(), i * 32, 0);
+    },
+  })),
+  // glass partition of the infra/server room
+  { name: 'glass_h', draw: chunky(glassWallH) },
+  { name: 'glass_door_l', draw: chunky((img) => glassDoor(img, 'l')) },
+  { name: 'glass_door_r', draw: chunky((img) => glassDoor(img, 'r')) },
+  { name: 'glass_v', draw: chunky(glassWallV) },
+  { name: 'glass_corner', draw: chunky(glassCorner) },
   {
     name: 'bookshelf_top',
     draw(img) {
@@ -563,30 +725,32 @@ export const TILE_DEFS = [
     }),
   },
   {
+    // office bin: wide ribbed body, dark rim with a swing slot
     name: 'trash_bin',
     draw: chunky((img) => {
-      img.rect(5, 7, 6, 7, PAL.bin);
-      img.outline(5, 7, 6, 7, PAL.binDark);
-      img.vline(7, 8, 13, PAL.binDark);
-      img.vline(6, 8, 13, PAL.binHi);
-      img.rect(4, 5, 8, 2, PAL.binDark);
-      img.hline(5, 10, 5, PAL.binHi);
+      img.rect(4, 6, 8, 8, PAL.bin);
+      img.outline(4, 6, 8, 8, PAL.binDark);
+      for (let x = 6; x <= 10; x += 2) img.vline(x, 7, 12, PAL.binDark);
+      img.vline(5, 7, 12, PAL.binHi);
+      // rim + swing slot
+      img.rect(3, 4, 10, 2, PAL.binDark);
+      img.hline(3, 12, 4, PAL.binHi);
+      img.rect(6, 5, 4, 1, '#10131f');
+      // base shadow
+      img.hline(5, 10, 14, PAL.binDark);
     }),
   },
   {
-    name: 'water_cooler',
-    draw: chunky((img) => {
-      img.rect(5, 1, 6, 4, PAL.bottle);
-      img.outline(5, 1, 6, 4, '#6da8c8');
-      img.px(6, 2, PAL.bottleHi);
-      img.rect(4, 5, 8, 9, PAL.cooler);
-      img.outline(4, 5, 8, 9, PAL.coolerDark);
-      img.rect(6, 7, 4, 2, PAL.coolerShade);
-      img.px(6, 7, '#5878b8');
-      img.px(9, 7, PAL.redDim);
-      img.rect(5, 14, 2, 1, PAL.coolerDark);
-      img.rect(9, 14, 2, 1, PAL.coolerDark);
-    }),
+    name: 'water_cooler_top',
+    draw(img) {
+      copyRegion(img, coolerBigCached(), 0, 0);
+    },
+  },
+  {
+    name: 'water_cooler_bottom',
+    draw(img) {
+      copyRegion(img, coolerBigCached(), 0, 32);
+    },
   },
   {
     name: 'vending_top',

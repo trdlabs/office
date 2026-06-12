@@ -21,18 +21,24 @@ directory:
 
 | Script / module | Output |
 | --- | --- |
-| `tools/lib/tiles.mjs` | `tiles/office-tileset-day.png` + `-night.png` — environment/furniture tiles, 32×32 (incl. 2×2 workstation desk blocks) |
-| `tools/lib/agents.mjs` | `agents/agent-<role>.png` — 32×44 back-facing seated characters (Boss: 32×48 in the executive chair), 2 idle frames |
+| `tools/lib/tiles.mjs` | `tiles/office-tileset-day.png` + `-night.png` — environment/furniture tiles, 32×32 (incl. 2×1 laptop desk blocks, the 4×1 boss console, glass partition, carpets, tech floor) |
+| `tools/lib/agents.mjs` | `agents/agent-<role>.png` — 32×36 front-facing seated busts (Boss: 32×40 in the winged executive chair), 2 idle frames |
 | `tools/lib/props.mjs` | `props/*.png` — interactive objects, 2 animation frames |
 | `tools/lib/palette.mjs` | the "Retro Pixel AI Research Tower" day palette + `nightify()` + `EMISSIVE` + `ROLE_STYLES` |
 
 **Chunky-pixel rule:** all art is drawn on a logical 16-px grid and upscaled
 ×2 (`upscale()` in `tools/lib/img.mjs`) onto the 32-px tiles — one art pixel
 is 2×2 real pixels. Large shapes and readable silhouettes beat micro-detail;
-screens carry a single glowing glyph, never a dense fake dashboard. Agents
-face their desks (viewer sees hair, shoulders and the chair backrest), so a
-role must read through hair style/color, shirt color and head-level
-accessories (cap, headset, bun, ponytail).
+screens carry a single glowing glyph, never a dense fake dashboard (laptop
+lids carry a generic glowing mark — no real-world logos).
+
+**Front-facing workstation rule (Iteration 3):** agents face the viewer.
+A character is a seated bust — face with eyes, hair style, outfit, chair
+back peeking at the sides — whose bottom edge is the "desk cut": the sprite
+ends where the desk begins, so the desk + laptop cover the lap. A role must
+read through hair style/color, outfit (suit, blazer, hoodie, shirt+tie,
+tee, turtleneck, vest) and face-level accessories (glasses, cap, headset).
+The Boss is taller, suited, and sits in a winged executive chair.
 
 All art is drawn once in the Day Office palette. The night tileset is derived
 automatically: `nightify()` pushes every pixel toward a dark blue cast except
@@ -73,9 +79,11 @@ can produce richer characters, but LPC assets carry CC-BY-SA / OGA-BY / GPL
 licenses and **require attribution per author**. The kit supports them
 without code changes (an LPC sheet is just another sprite strip — register it
 with the right `frameWidth`/`frameCount`). Note that stock LPC sheets are
-walk cycles (front/side/back standing poses); a seated back-facing office
-pose needs custom frames, which is why the example ships LPC-*inspired*
-original characters instead. Before committing any real LPC asset:
+walk cycles (front/side/back standing poses); the example's seated
+behind-the-desk pose needs custom frames (e.g. crop a front-facing LPC bust
+at the desk cut), which is why the example ships LPC-*inspired* original
+characters instead. Real LPC import stays a drop-in path: same strip
+format, same feet/desk-edge anchor. Before committing any real LPC asset:
 
 ```text
 examples/<floor>/public/assets/third-party/lpc/

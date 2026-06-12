@@ -19,14 +19,24 @@ plausible agent statuses (preview-side only — no real API).
 
 ## What's on the floor
 
-Agents: Boss/Orchestrator (violet/gold, executive chair at the central
-command desk), Strategy Analyst, Researcher, Critic/Risk Reviewer, Builder,
-Evaluator, Performance Monitor. Everyone sits with their back to the viewer,
-facing their desk monitor; role/name labels are nameplates under each
-workstation.
+Agents: Boss/Orchestrator (violet/gold suit, winged executive chair at the
+central command console), Strategy Analyst, Researcher, Critic/Risk
+Reviewer, Builder, Evaluator, Performance Monitor. Everyone faces the
+viewer, seated behind their desk with a laptop in front (lid back toward
+the camera); role labels are nameplate plaques on each desk's front edge.
+Characters are original LPC-inspired busts — distinct hair, outfits and
+accessories (glasses, cap, headset); real LPC import is a documented
+future drop-in path (`public/assets/ASSETS.md`).
+
+Layout: boards symmetric around the centered door (Hypothesis left,
+Backtests right); vending machine + bin and big water cooler + bin flank
+the entrance; desk wings sit on carpet zones; below the Boss a glass-walled
+infra room holds the Server Rack, Archive Shelf and Bot Status Monitor;
+bookshelves and a coffee corner line the bottom wall.
 
 Interactive objects: Hypothesis Board, Wall Monitor (backtests), Bot Status
-Monitor, Archive Shelf, Server Rack / Data Node, Boss Console.
+Monitor, Archive Shelf, Server Rack / Data Node, Boss Console (a hit-area
+over the console furniture tiles).
 
 ## Structure
 

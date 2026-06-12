@@ -22,6 +22,8 @@ export function createLabelChip(
   const color = style?.color ?? '#d4dcf0';
   const backgroundColor = style?.backgroundColor ?? '#10131f';
   const backgroundAlpha = style?.backgroundAlpha ?? 0.65;
+  const borderColor = style?.borderColor;
+  const borderAlpha = style?.borderAlpha ?? 0.9;
 
   const container = new Container();
   container.label = `label:${textValue}`;
@@ -45,10 +47,30 @@ export function createLabelChip(
   const h = Math.ceil(text.height) + padY * 2;
 
   const background = new Graphics();
-  background.roundRect(0, 0, w, h, 2).fill({
-    color: backgroundColor,
-    alpha: backgroundAlpha,
-  });
+
+  function paint(highlighted: boolean, highlightColor?: string): void {
+    background.clear();
+    background.roundRect(0, 0, w, h, 2).fill({
+      color: backgroundColor,
+      alpha: highlighted ? Math.min(1, backgroundAlpha + 0.25) : backgroundAlpha,
+    });
+    if (highlighted && highlightColor) {
+      background.roundRect(0, 0, w, h, 2).stroke({
+        color: highlightColor,
+        width: 0.75,
+        alpha: 0.9,
+      });
+    } else if (borderColor) {
+      // Base border — the "desk nameplate" look.
+      background.roundRect(0, 0, w, h, 2).stroke({
+        color: borderColor,
+        width: 0.75,
+        alpha: borderAlpha,
+      });
+    }
+  }
+
+  paint(false);
 
   text.position.set(padX, padY);
   container.addChild(background, text);
@@ -58,18 +80,7 @@ export function createLabelChip(
   return {
     container,
     setHighlighted(highlighted: boolean, highlightColor: string): void {
-      background.clear();
-      background.roundRect(0, 0, w, h, 2).fill({
-        color: backgroundColor,
-        alpha: highlighted ? Math.min(1, backgroundAlpha + 0.25) : backgroundAlpha,
-      });
-      if (highlighted) {
-        background.roundRect(0, 0, w, h, 2).stroke({
-          color: highlightColor,
-          width: 0.75,
-          alpha: 0.9,
-        });
-      }
+      paint(highlighted, highlightColor);
     },
   };
 }

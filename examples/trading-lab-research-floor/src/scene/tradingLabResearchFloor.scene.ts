@@ -30,13 +30,19 @@ export const FLOOR_THEMES: Record<
       selectionColor: '#e8590c',
       floorLabelColor: '#7a6850',
       statusBadgeScale: 1.1,
-      // Desks sit above the agents now — lift badges clear of the monitors.
-      statusBadgeOffsetY: 44,
+      // Agents face the viewer with nothing above their heads — badges sit
+      // right over the hair.
+      statusBadgeOffsetY: 2,
+      // Push the agent chip past the desk block (32px) so it reads as a
+      // nameplate on the desk's front edge.
+      agentLabelOffsetY: 22,
       agentLabel: {
-        // Desk nameplate under the workstation.
-        color: '#3b3120',
-        backgroundColor: '#e7dcbe',
-        backgroundAlpha: 0.92,
+        // Desk nameplate: dark plaque with a brass border.
+        color: '#f2ead0',
+        backgroundColor: '#33302c',
+        backgroundAlpha: 0.96,
+        borderColor: '#c9a23e',
+        borderAlpha: 0.85,
         fontSize: 8,
       },
       objectLabel: {
@@ -58,11 +64,14 @@ export const FLOOR_THEMES: Record<
       selectionColor: '#ffd166',
       floorLabelColor: '#54648c',
       statusBadgeScale: 1.1,
-      statusBadgeOffsetY: 44,
+      statusBadgeOffsetY: 2,
+      agentLabelOffsetY: 22,
       agentLabel: {
         color: '#d4dcf0',
         backgroundColor: '#10131f',
-        backgroundAlpha: 0.8,
+        backgroundAlpha: 0.92,
+        borderColor: '#3e5a78',
+        borderAlpha: 0.9,
         fontSize: 8,
       },
       objectLabel: {
@@ -91,7 +100,6 @@ const PROP_SPRITES: Array<{ key: string; file: string; frameWidth: number }> = [
   { key: 'prop:bot_status_monitor', file: 'bot-status-monitor', frameWidth: 48 },
   { key: 'prop:archive_shelf', file: 'archive-shelf', frameWidth: 64 },
   { key: 'prop:server_rack', file: 'server-rack', frameWidth: 56 },
-  { key: 'prop:boss_console', file: 'boss-console', frameWidth: 128 },
 ];
 
 export function createTradingLabResearchFloorScene(
@@ -210,11 +218,13 @@ export function createTradingLabResearchFloorScene(
         sprite: 'prop:server_rack',
       },
       {
+        // The console desk itself is painted in furniture tiles; this is a
+        // pure hover/click hit-area over it (no sprite), so the Boss and
+        // his nameplate always draw on top.
         id: 'boss-console',
         type: 'boss_console',
         label: 'Console',
         panelTarget: 'boss-commands',
-        sprite: 'prop:boss_console',
       },
     ],
 
