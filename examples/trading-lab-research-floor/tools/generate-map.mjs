@@ -23,10 +23,12 @@
  * - center: the Boss behind a deep 4×2 mahogany command console, screen
  *   center, one row above the server room (console = furniture tiles;
  *   `boss-console` object is a pure hit-area);
- * - below the Boss: a glass-walled infra/server room (tech floor) with
- *   square corners and a sliding glass door, holding the server rack,
- *   archive shelf and bot status monitor;
- * - bottom-right: coffee corner; plants in the corner seams.
+ * - behind the Boss: an executive lounge — two leather sofas facing each
+ *   other, framed by big plants (central door walkway kept clear);
+ * - below the Boss: a glass-walled infra/server room (tech floor, full
+ *   width to the glass walls) with square corners and a sliding glass door,
+ *   holding the server rack, archive shelf and bot status monitor;
+ * - big plants in the four corner seams.
  *
  * Usage: node tools/generate-map.mjs   (run generate-assets.mjs first)
  */
@@ -89,11 +91,13 @@ for (let x = 1; x <= 18; x++) set(floor, x, 3, 'floor_shadow');
 set(floor, 9, 3, 'doormat_l');
 set(floor, 10, 3, 'doormat_r');
 
-// raised tech floor inside the glass server room
+// raised tech floor inside the glass server room. The side-wall columns
+// (x=6/x=13) use half-tech edge tiles (plank outside, tech inside) so the
+// floor reads flush to the glass walls and never spills outside the room.
 for (let y = 13; y <= 15; y++) {
-  for (let x = 7; x <= 12; x++) {
-    set(floor, x, y, 'floor_tech');
-  }
+  set(floor, 6, y, 'floor_tech_edge_l');
+  for (let x = 7; x <= 12; x++) set(floor, x, y, 'floor_tech');
+  set(floor, 13, y, 'floor_tech_edge_r');
 }
 
 // walls: full perimeter cap, two face rows along the top wall
@@ -118,6 +122,8 @@ set(walls, 1, 1, 'wall_vent');
 set(walls, 8, 1, 'wall_clock');
 set(walls, 12, 1, 'poster');
 set(walls, 18, 1, 'notice_board');
+// calendar on the wall directly above the trash bin next to the cooler
+set(walls, 11, 1, 'calendar');
 
 // entrance flanks, FLUSH against the wall: the tall units span wall rows
 // 1-2 (feet land exactly on the wall base line), the bins sit on row 2.
@@ -154,6 +160,24 @@ for (const [i, part] of ['l', 'ml', 'mr', 'r'].entries()) {
   set(furniture, 8 + i, 10, `console_${part}_b`);
 }
 
+// executive lounge behind the Boss: two vertical leather sofas (1×3) facing
+// each other — left opens east, right opens west — drawn close together. A
+// big plant bookends each sofa above and below (one higher, one lower) so the
+// greenery sits beside the sofas, not behind their backrests.
+set(furniture, 7, 5, 'sofa_e_t');
+set(furniture, 7, 6, 'sofa_e_m');
+set(furniture, 7, 7, 'sofa_e_b');
+set(furniture, 12, 5, 'sofa_w_t');
+set(furniture, 12, 6, 'sofa_w_m');
+set(furniture, 12, 7, 'sofa_w_b');
+set(furniture, 7, 4, 'plant_big');
+set(furniture, 7, 8, 'plant_big');
+set(furniture, 12, 4, 'plant_big');
+set(furniture, 12, 8, 'plant_big');
+// coffee table centered between the two facing sofas
+set(furniture, 9, 6, 'coffee_table_l');
+set(furniture, 10, 6, 'coffee_table_r');
+
 // glass-walled infra/server room below the Boss: square corners (the
 // horizontal run stops at the vertical band) + a sliding glass door
 // aligned with the main entrance axis
@@ -170,16 +194,12 @@ for (const gy of [13, 14, 15]) {
   set(furniture, 13, gy, 'glass_v');
 }
 
-// bottom-right: small coffee corner
-set(furniture, 16, 15, 'cabinet_coffee');
-set(furniture, 15, 15, 'plant_small');
-
-// plants in the seams (top plants sit on the wall row, flush against it)
+// big plants in the corner seams only (top plants sit on the wall row,
+// flush against it) — bottom row otherwise left clear.
 set(furniture, 1, 2, 'plant_big');
 set(furniture, 18, 2, 'plant_big');
 set(furniture, 1, 15, 'plant_big');
 set(furniture, 18, 15, 'plant_big');
-set(furniture, 4, 15, 'plant_small');
 
 // decor layer kept (empty) for the canonical layer contract; desk items are
 // baked into the desk tiles.
@@ -273,6 +293,12 @@ function buildObjects() {
   ];
 
   const objects = [
+    // the entrance door — interactive so the floor can later "exit" through it
+    interactiveRect('door', 288, 32, 64, 64, {
+      objectType: 'door',
+      label: 'Exit',
+      panelTarget: 'exit',
+    }),
     // wall boards, symmetric around the door (door center = x 320)
     interactiveRect('hypothesis-board', 128, 34, 96, 48, {
       objectType: 'hypothesis_board',
@@ -299,13 +325,6 @@ function buildObjects() {
       objectType: 'bot_status_monitor',
       label: 'Bot Status',
       panelTarget: 'bot-health',
-    }),
-    // pure hit-area over the 4×2 console furniture tiles (no sprite); the
-    // hover label lands below the console, clear of the Boss nameplate
-    interactiveRect('boss-console', 256, 288, 128, 64, {
-      objectType: 'boss_console',
-      label: 'Console',
-      panelTarget: 'boss-commands',
     }),
   ];
 

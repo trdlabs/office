@@ -143,6 +143,29 @@ export class AssetRegistry {
     return this.sprites.get(key)?.config.animationSpeed ?? DEFAULT_ANIMATION_SPEED;
   }
 
+  /**
+   * Resolve the named animation states declared on a sprite asset into ready
+   * frame ranges. Returns null when the asset declares no `states`.
+   */
+  getAnimationStates(
+    key: string,
+  ): Record<string, { frames: Texture[]; speed: number }> | null {
+    const asset = this.sprites.get(key);
+    const states = asset?.config.states;
+    if (!asset || !states) return null;
+    const out: Record<string, { frames: Texture[]; speed: number }> = {};
+    for (const [name, state] of Object.entries(states)) {
+      const from = Math.max(0, state.from ?? 0);
+      const count = Math.max(1, state.count ?? 1);
+      const slice = asset.frames.slice(from, from + count);
+      out[name] = {
+        frames: slice.length > 0 ? slice : asset.frames.slice(0, 1),
+        speed: state.speed ?? 0,
+      };
+    }
+    return out;
+  }
+
   destroy(): void {
     this.sprites.clear();
   }

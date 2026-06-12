@@ -30,12 +30,12 @@ export const FLOOR_THEMES: Record<
       selectionColor: '#e8590c',
       floorLabelColor: '#7a6850',
       statusBadgeScale: 1.1,
-      // Agents face the viewer with nothing above their heads — badges sit
-      // right over the hair.
-      statusBadgeOffsetY: 2,
-      // Push the agent chip past the desk block (32px) so it reads as a
-      // nameplate on the desk's front edge.
-      agentLabelOffsetY: 22,
+      // Drop the badge from floating high above the head to just over the
+      // hair, close to the character.
+      statusBadgeOffsetY: -8,
+      // Push the agent chip below the desk block so it clears the desk and
+      // reads as a floor nameplate in front of the workstation.
+      agentLabelOffsetY: 30,
       agentLabel: {
         // Desk nameplate: dark plaque with a brass border.
         color: '#f2ead0',
@@ -43,7 +43,7 @@ export const FLOOR_THEMES: Record<
         backgroundAlpha: 0.96,
         borderColor: '#c9a23e',
         borderAlpha: 0.85,
-        fontSize: 8,
+        fontSize: 10,
       },
       objectLabel: {
         color: '#eef2f8',
@@ -64,15 +64,15 @@ export const FLOOR_THEMES: Record<
       selectionColor: '#ffd166',
       floorLabelColor: '#54648c',
       statusBadgeScale: 1.1,
-      statusBadgeOffsetY: 2,
-      agentLabelOffsetY: 22,
+      statusBadgeOffsetY: -8,
+      agentLabelOffsetY: 30,
       agentLabel: {
         color: '#d4dcf0',
         backgroundColor: '#10131f',
         backgroundAlpha: 0.92,
         borderColor: '#3e5a78',
         borderAlpha: 0.9,
-        fontSize: 8,
+        fontSize: 10,
       },
       objectLabel: {
         color: '#9fb2d8',
@@ -115,14 +115,18 @@ export function createTradingLabResearchFloorScene(
     assets: [
       // Agents are composed from real Universal LPC Spritesheet Character
       // Generator layers (see public/assets/third-party/lpc/ for sources,
-      // attributions and licenses). Both frames are identical — agents sit
-      // still, no idle bobbing.
+      // attributions and licenses). Each strip is a still idle pose (frame 0)
+      // followed by a 3-frame typing loop (frames 1-3): the agent sits still
+      // while idle and types at its keyboard while it works.
       ...AGENT_SPRITES.map((role) => ({
         key: `agent:${role}`,
         url: `/assets/third-party/lpc/agent-${role}.png`,
         frameWidth: 64,
-        frameCount: 2,
-        animationSpeed: 0,
+        frameCount: 4,
+        states: {
+          idle: { from: 0, count: 1 },
+          active: { from: 1, count: 3, speed: 0.14 },
+        },
       })),
       ...PROP_SPRITES.map(({ key, file, frameWidth }) => ({
         key,
@@ -141,8 +145,8 @@ export function createTradingLabResearchFloorScene(
         label: 'Boss',
         initialStatus: 'thinking',
         // The 4×2 mahogany console is deeper than a workstation desk: push
-        // the nameplate further down so it lands on the console's front face.
-        labelOffsetY: 44,
+        // the nameplate below the console so the desk never overlaps it.
+        labelOffsetY: 62,
       },
       {
         id: 'analyst',
@@ -190,6 +194,14 @@ export function createTradingLabResearchFloorScene(
 
     objects: [
       {
+        // The entrance door (painted in wall tiles) — a pure hit-area so it
+        // can later trigger leaving the floor.
+        id: 'door',
+        type: 'door',
+        label: 'Exit',
+        panelTarget: 'exit',
+      },
+      {
         id: 'hypothesis-board',
         type: 'hypothesis_board',
         label: 'Hypothesis Board',
@@ -223,15 +235,6 @@ export function createTradingLabResearchFloorScene(
         label: 'Data Node',
         panelTarget: 'infra-status',
         sprite: 'prop:server_rack',
-      },
-      {
-        // The console desk itself is painted in furniture tiles; this is a
-        // pure hover/click hit-area over it (no sprite), so the Boss and
-        // his nameplate always draw on top.
-        id: 'boss-console',
-        type: 'boss_console',
-        label: 'Console',
-        panelTarget: 'boss-commands',
       },
     ],
 

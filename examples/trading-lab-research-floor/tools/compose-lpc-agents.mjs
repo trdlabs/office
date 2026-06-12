@@ -13,7 +13,10 @@
  *   4. draws an office chair BEHIND the figure (original pixels, not LPC),
  *   5. crops the seated bust at the desk cut line (the workstation desk tile
  *      covers the lap), and
- *   6. writes a 2-frame strip (both frames identical — agents sit still).
+ *   6. writes a 4-frame strip: frame 0 is the still idle pose, frames 1-3 are
+ *      a typing loop that animates only the hands at the desk line. The kit
+ *      holds frame 0 while the agent is idle and plays 1-3 while it works
+ *      (see the scene's sprite `states`).
  *
  * It also regenerates ATTRIBUTIONS.md next to the sprites from the
  * generator's CREDITS.csv, listing every source file actually used with its
@@ -350,6 +353,87 @@ function composeRole(role) {
 }
 
 // ---------------------------------------------------------------------------
+// typing animation: synthesize a few frames that animate ONLY the hands at
+// the desk line, so a busy agent visibly types (no head/torso/chair bob).
+// The hands are drawn over the seated pose in the agent's own skin tone.
+// ---------------------------------------------------------------------------
+
+const clamp8 = (v) => Math.max(0, Math.min(255, Math.round(v)));
+const rgbHex = ([r, g, b], a = 255) =>
+  '#' + [r, g, b, a].map((v) => clamp8(v).toString(16).padStart(2, '0')).join('');
+const scaleRgb = ([r, g, b], k) => [r * k, g * k, b * k];
+
+/** Most common warm (skin) color in the cheeks + resting-hands regions. */
+function sampleSkin(img) {
+  const counts = new Map();
+  // [x, y, w, h] — both cheeks and the clasped hands are reliably skin
+  for (const [rx, ry, rw, rh] of [
+    [25, 22, 14, 6],
+    [26, 44, 12, 7],
+  ]) {
+    for (let y = ry; y < ry + rh; y++) {
+      for (let x = rx; x < rx + rw; x++) {
+        const i = (y * img.width + x) * 4;
+        if (img.data[i + 3] < 200) continue;
+        const r = img.data[i];
+        const g = img.data[i + 1];
+        const b = img.data[i + 2];
+        if (r < 80 || b > r) continue; // skip hair/outline (dark) and cloth (blue)
+        const key = (r << 16) | (g << 8) | b;
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+      }
+    }
+  }
+  let best = 0;
+  let bestKey = null;
+  for (const [key, count] of counts) {
+    if (count > best) {
+      best = count;
+      bestKey = key;
+    }
+  }
+  if (bestKey == null) return null;
+  return [(bestKey >> 16) & 255, (bestKey >> 8) & 255, bestKey & 255];
+}
+
+/** One hand (with a short wrist) at (hx, hy); `pressed` extends a finger. */
+function drawHand(img, hx, hy, w, skinHex, hiHex, darkHex, pressed) {
+  img.rect(hx, hy, w, 3, skinHex);
+  img.hline(hx, hx + w - 1, hy, hiHex); // knuckle highlight
+  img.px(hx + Math.floor(w / 2), hy + 1, darkHex); // finger split
+  img.px(hx, hy + 2, darkHex);
+  img.px(hx + w - 1, hy + 2, darkHex);
+  // short wrist/forearm up toward the sleeve
+  img.rect(hx + 1, hy - 2, w - 2, 2, skinHex);
+  img.px(hx + 1, hy - 3, darkHex);
+  if (pressed) {
+    // fingers reaching down onto the keys
+    img.px(hx + 1, hy + 3, darkHex);
+    img.px(hx + w - 2, hy + 3, darkHex);
+  }
+}
+
+/**
+ * Repaint the hand zone for one typing phase. The two hands seesaw — one
+ * raised, the other pressing a key — looping raised-left → neutral →
+ * raised-right.
+ */
+function drawTypingHands(img, skin, phase) {
+  const skinHex = rgbHex(skin);
+  const hiHex = rgbHex(scaleRgb(skin, 1.14));
+  const darkHex = rgbHex(scaleRgb(skin, 0.74));
+  const baseY = 46;
+  const W = 5;
+  const [leftRaised, rightRaised] = [
+    [true, false],
+    [false, false],
+    [false, true],
+  ][phase % 3];
+  drawHand(img, 34, baseY - (rightRaised ? 3 : 0), W, skinHex, hiHex, darkHex, !rightRaised && leftRaised);
+  drawHand(img, 27, baseY - (leftRaised ? 3 : 0), W, skinHex, hiHex, darkHex, !leftRaised && rightRaised);
+}
+
+// ---------------------------------------------------------------------------
 // attribution from the generator's CREDITS.csv
 // ---------------------------------------------------------------------------
 
@@ -447,12 +531,19 @@ const usedDirs = new Set();
 
 for (const role of AGENT_ROLES) {
   for (const [, dir] of LOOKS[role].layers) usedDirs.add(dir);
-  const frame = composeRole(role);
-  // two identical frames: agents sit still (no idle bobbing)
-  const sheet = strip([frame, frame]);
+  const idle = composeRole(role);
+  const skin = sampleSkin(idle) ?? [224, 178, 140];
+  // frame 0 = still idle pose; frames 1-3 = typing loop (hands only)
+  const frames = [idle];
+  for (let phase = 0; phase < 3; phase++) {
+    const f = idle.clone();
+    drawTypingHands(f, skin, phase);
+    frames.push(f);
+  }
+  const sheet = strip(frames);
   const file = join(OUT_DIR, `agent-${role}.png`);
   writeFileSync(file, encodePng(sheet.width, sheet.height, sheet.data));
-  console.log(`  agent-${role}.png ${sheet.width}×${sheet.height}`);
+  console.log(`  agent-${role}.png ${sheet.width}×${sheet.height} (${frames.length} frames)`);
 }
 
 writeFileSync(join(OUT_DIR, 'ATTRIBUTIONS.md'), buildAttributions(usedDirs));

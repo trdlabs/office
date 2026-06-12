@@ -85,6 +85,29 @@ function techFloor(img) {
   img.px(13, 10, PAL.cyan);
 }
 
+/**
+ * Edge tile for the server-room side walls: plank (common floor) on the outer
+ * half, raised tech floor on the room half. The centered glass-wall band hides
+ * the seam, so the tech floor reads flush to the wall and never spills outside
+ * the room. `side` = 'l' (left wall → tech on the EAST half) | 'r' (right wall
+ * → tech on the WEST half).
+ */
+function techFloorEdge(img, side) {
+  plankFloor(img, seedFromString('floor_tech_edge'), PAL.floorB);
+  const techWest = side === 'r';
+  const tx0 = techWest ? 0 : 8;
+  for (let y = 0; y < 16; y++) {
+    for (let x = tx0; x < tx0 + 8; x++) img.px(x, y, PAL.techFloor);
+  }
+  img.hline(tx0, tx0 + 7, 7, PAL.techSeam);
+  img.hline(tx0, tx0 + 7, 15, PAL.techSeam);
+  img.vline(techWest ? 0 : 15, 0, 15, PAL.techSeam); // outer edge seam
+  img.vline(techWest ? 7 : 8, 0, 15, PAL.techSeam); // boundary seam (under the band)
+  img.px(tx0 + 3, 4, PAL.techFloorHi);
+  img.px(tx0 + 5, 11, PAL.techFloorHi);
+  img.px(techWest ? 2 : 13, 10, PAL.cyan);
+}
+
 // ---------------------------------------------------------------------------
 // walls (logical 16×16)
 // ---------------------------------------------------------------------------
@@ -372,26 +395,15 @@ function consoleBig() {
   const img = new Img(64, 32); // logical 64×32 → 128×64 px (4×2 tiles)
 
   // --- deep mahogany executive desk -----------------------------------------
-  // top surface
-  img.rect(1, 10, 62, 9, PAL.mahogany);
-  img.hline(2, 61, 10, PAL.mahoganyHi);
-  img.hline(2, 61, 11, PAL.mahoganyHi);
-  img.hline(3, 60, 14, PAL.mahoganyGrain);
-  img.hline(3, 60, 16, PAL.mahoganyGrain);
-  // front face with raised panels + a gold inlay line under the desktop
-  img.rect(2, 19, 60, 9, PAL.mahoganyFace);
-  img.hline(2, 61, 19, PAL.gold);
-  for (const px of [6, 26, 46]) {
-    img.outline(px, 21, 12, 6, PAL.mahoganyDark);
-    img.hline(px + 1, px + 10, 22, PAL.mahoganyHi);
-  }
-  img.outline(1, 10, 62, 18, PAL.mahoganyOutline);
-  // legs + floor shadow
-  img.rect(3, 28, 4, 3, PAL.mahoganyLeg);
-  img.rect(57, 28, 4, 3, PAL.mahoganyLeg);
-  img.hline(4, 59, 31, '#00000033');
+  // The top surface fills from the console's back edge (just under the Boss)
+  // down to the front face, so the monitors stand on ONE continuous desktop —
+  // no floor strip showing above the surface, no desk edge crossing them.
+  img.rect(1, 1, 62, 20, PAL.mahogany); // top surface y1..21
+  img.hline(2, 61, 1, PAL.mahoganyHi); // back edge (hidden behind the Boss)
+  img.hline(3, 60, 6, PAL.mahoganyGrain);
+  img.hline(3, 60, 17, PAL.mahoganyGrain);
 
-  // --- three aluminum monitor backs (center one larger) ----------------------
+  // --- three aluminum monitors standing ON the surface (back to viewer) ------
   const back = (x, y, w, h) => {
     img.rect(x, y + 1, w, h - 1, PAL.alu);
     img.hline(x + 1, x + w - 2, y, PAL.aluHi);
@@ -404,12 +416,29 @@ function consoleBig() {
     const cy = y + Math.floor(h / 2) - 1;
     img.rect(cx, cy, 2, 2, PAL.markGlow);
     img.px(cx + 1, cy - 1, PAL.markGlow);
-    // stand down to the desktop
-    img.rect(cx, y + h, 2, Math.max(1, 11 - (y + h)), PAL.aluDark);
+    // stand: neck + a wide foot plate resting on the desk surface
+    const nx = x + Math.floor(w / 2) - 1;
+    img.rect(nx, y + h, 2, 3, PAL.aluDark); // neck
+    img.rect(nx - 3, y + h + 3, 8, 1, PAL.aluEdge); // foot plate
+    img.hline(nx - 3, nx + 4, y + h + 4, PAL.mahoganyGrain); // contact shadow
   };
-  back(7, 2, 13, 8);
-  back(25, 0, 14, 10);
-  back(44, 2, 13, 8);
+  // three identical monitors, aligned on one line
+  back(6, 2, 14, 9);
+  back(25, 2, 14, 9);
+  back(44, 2, 14, 9);
+
+  // --- front face with raised panels + a gold inlay line under the desktop ---
+  img.rect(2, 21, 60, 9, PAL.mahoganyFace);
+  img.hline(2, 61, 21, PAL.gold);
+  for (const px of [6, 26, 46]) {
+    img.outline(px, 23, 12, 5, PAL.mahoganyDark);
+    img.hline(px + 1, px + 10, 24, PAL.mahoganyHi);
+  }
+  img.outline(1, 1, 62, 29, PAL.mahoganyOutline);
+  // legs + floor shadow
+  img.rect(3, 30, 4, 2, PAL.mahoganyLeg);
+  img.rect(57, 30, 4, 2, PAL.mahoganyLeg);
+  img.hline(4, 59, 31, '#00000033');
 
   return (_console = upscale(img, 2));
 }
@@ -536,6 +565,123 @@ function coolerBigCached() {
 }
 
 // ---------------------------------------------------------------------------
+// leather lounge sofa (1×3 tiles) — vertical isometric 3-seater (after the
+// sofa1.png reference): a padded backrest down the far side, a column of three
+// puffy cushions seen from a top-3/4 angle, rounded arms capping the ends,
+// and feet. `face` = 'e' (backrest west, seat opens east) | 'w' (mirror), so
+// two face each other across the Boss's lounge.
+// ---------------------------------------------------------------------------
+
+/** Vertical iso sofa facing east, drawn in a logical 16×48 canvas. */
+function sofaVertEast() {
+  const img = new Img(16, 48);
+  const FR = PAL.leatherDark; // frame body (backrest + arms)
+  const OUT = PAL.leatherSeam; // seams / outline
+  const FRH = PAL.leather; // frame highlight
+  const CT = PAL.leatherHi; // cushion top
+  const CS = PAL.leatherSheen; // cushion top sheen
+  const CB = PAL.leather; // cushion front face
+  const PIP = PAL.leatherPiping; // seat-edge piping
+
+  // floor contact shadow
+  img.rect(2, 46, 13, 2, '#00000026');
+
+  // rolled arm caps (north + south)
+  img.rect(1, 1, 14, 7, FR);
+  img.outline(1, 1, 14, 7, OUT);
+  img.hline(3, 12, 1, FRH);
+  img.px(1, 1, OUT);
+  img.px(14, 1, OUT);
+  img.rect(1, 40, 14, 7, FR);
+  img.outline(1, 40, 14, 7, OUT);
+  img.hline(3, 12, 41, FRH);
+
+  // backrest down the west (far) side
+  img.rect(1, 8, 4, 32, FR);
+  img.outline(1, 8, 4, 32, OUT);
+  img.vline(2, 9, 38, FRH);
+
+  // three stacked cushions (top surface + front face = iso look)
+  for (let c = 0; c < 3; c++) {
+    const y0 = 8 + c * 11; // 8, 19, 30
+    const h = c === 2 ? 10 : 11;
+    img.rect(5, y0, 9, h, CB); // front-face color (fills block)
+    img.outline(5, y0, 9, h, OUT);
+    img.rect(6, y0 + 1, 7, 5, CT); // seat top surface
+    img.hline(6, 12, y0 + 1, CS); // bright front rim of the top
+    img.px(6, y0 + 2, CS);
+    img.hline(5, 13, y0 + h - 1, OUT); // seam to the next cushion
+    img.px(3, y0 + 4, PAL.gold); // gold tuft button on the backrest
+  }
+
+  // light piping along the open (east) seat edge
+  img.vline(14, 8, 39, PIP);
+
+  // feet
+  img.rect(2, 46, 2, 2, PAL.leatherFoot);
+  img.rect(11, 46, 2, 2, PAL.leatherFoot);
+  return img;
+}
+
+const _sofas = new Map();
+
+function sofaBig(face) {
+  let cached = _sofas.get(face);
+  if (cached) return cached;
+  let logical = sofaVertEast();
+  if (face === 'w') {
+    const m = new Img(16, 48);
+    for (let y = 0; y < 48; y++) {
+      for (let x = 0; x < 16; x++) {
+        const si = (y * 16 + (15 - x)) * 4;
+        const di = (y * 16 + x) * 4;
+        m.data[di] = logical.data[si];
+        m.data[di + 1] = logical.data[si + 1];
+        m.data[di + 2] = logical.data[si + 2];
+        m.data[di + 3] = logical.data[si + 3];
+      }
+    }
+    logical = m;
+  }
+  cached = upscale(logical, 2);
+  _sofas.set(face, cached);
+  return cached;
+}
+
+// ---------------------------------------------------------------------------
+// lounge coffee table (2×1 tiles) — low oval wooden table between the sofas,
+// a magazine + a cup on top (after the coffe-table.png reference).
+// ---------------------------------------------------------------------------
+
+let _coffeeTable = null;
+
+function coffeeTableBig() {
+  if (_coffeeTable) return _coffeeTable;
+  const img = new Img(32, 16); // logical 32×16 → 64×32 px (2×1 tiles)
+  // floor contact shadow
+  img.rect(6, 14, 20, 2, '#00000026');
+  // splayed legs below the top
+  img.rect(7, 9, 2, 5, PAL.cofLeg);
+  img.rect(23, 9, 2, 5, PAL.cofLeg);
+  img.rect(13, 10, 2, 4, PAL.cofLeg);
+  img.rect(17, 10, 2, 4, PAL.cofLeg);
+  // oval wooden top
+  img.rect(4, 3, 24, 6, PAL.cofTop);
+  img.hline(6, 25, 2, PAL.cofTop); // rounded back edge
+  img.outline(4, 3, 24, 6, PAL.cofDark);
+  img.hline(6, 25, 3, PAL.cofHi); // top sheen
+  img.hline(7, 24, 4, PAL.cofHi);
+  img.hline(8, 23, 6, PAL.cofDark); // grain
+  img.hline(5, 26, 8, PAL.cofDark); // front lip shadow
+  // a magazine + a cup on top
+  img.rect(9, 4, 6, 2, PAL.blue);
+  img.px(9, 4, PAL.blueHi);
+  img.rect(19, 4, 3, 2, PAL.mug);
+  img.px(19, 4, PAL.mugHi);
+  return (_coffeeTable = upscale(img, 2));
+}
+
+// ---------------------------------------------------------------------------
 // tile defs
 // ---------------------------------------------------------------------------
 
@@ -574,6 +720,9 @@ export const TILE_DEFS = [
   })),
   // raised tech floor inside the glass server room
   { name: 'floor_tech', draw: chunky(techFloor) },
+  // half-tech edge tiles under the glass side walls (plank outside, tech inside)
+  { name: 'floor_tech_edge_l', draw: chunky((img) => techFloorEdge(img, 'l')) },
+  { name: 'floor_tech_edge_r', draw: chunky((img) => techFloorEdge(img, 'r')) },
   { name: 'wall_top', draw: chunky(wallCap) },
   { name: 'wall_face_u', draw: chunky(wallFaceUpper) },
   { name: 'wall_face_l', draw: chunky(wallFaceLower) },
@@ -591,14 +740,23 @@ export const TILE_DEFS = [
     name: 'wall_clock',
     draw: chunky((img) => {
       wallFaceUpper(img);
-      img.rect(5, 3, 6, 6, PAL.clockRim);
-      img.px(5, 3, PAL.wallFace);
-      img.px(10, 3, PAL.wallFace);
-      img.px(5, 8, PAL.wallFace);
-      img.px(10, 8, PAL.wallFace);
-      img.rect(6, 4, 4, 4, PAL.clockFace);
-      img.px(7, 5, '#3a414e');
-      img.px(8, 6, '#b8554f');
+      // bigger round wall clock
+      img.rect(4, 2, 8, 8, PAL.clockRim);
+      img.px(4, 2, PAL.wallFace);
+      img.px(11, 2, PAL.wallFace);
+      img.px(4, 9, PAL.wallFace);
+      img.px(11, 9, PAL.wallFace);
+      img.rect(5, 3, 6, 6, PAL.clockFace);
+      // hour ticks at 12 / 3 / 6 / 9
+      img.px(8, 3, '#3a414e');
+      img.px(8, 8, '#3a414e');
+      img.px(5, 6, '#3a414e');
+      img.px(10, 6, '#3a414e');
+      // hands from the center (hour up, minute to the right in red)
+      img.vline(8, 4, 6, '#3a414e');
+      img.px(9, 6, '#b8554f');
+      img.px(10, 6, '#b8554f');
+      img.px(8, 6, '#2b303c');
     }),
   },
   {
@@ -625,6 +783,33 @@ export const TILE_DEFS = [
       img.rect(10, 8, 3, 3, PAL.paperShade);
       img.px(5, 5, PAL.red);
       img.px(9, 5, '#5878b8');
+    }),
+  },
+  {
+    // wall calendar: red month header over a paper grid, hung from a nail —
+    // sits on the wall above the trash bin next to the water cooler.
+    name: 'calendar',
+    draw: chunky((img) => {
+      wallFaceUpper(img);
+      // nail + cord
+      img.px(8, 1, PAL.calRing);
+      // paper sheet
+      img.rect(4, 2, 9, 11, PAL.calPaper);
+      img.outline(4, 2, 9, 11, PAL.corkDark);
+      img.hline(5, 11, 12, PAL.calPaperShade);
+      // red month header + binding rings
+      img.rect(4, 2, 9, 3, PAL.calHeader);
+      img.hline(5, 11, 2, PAL.calHeaderHi);
+      img.px(6, 2, PAL.calRing);
+      img.px(10, 2, PAL.calRing);
+      // day grid dots
+      for (let gy = 0; gy < 3; gy++) {
+        for (let gx = 0; gx < 4; gx++) {
+          img.px(5 + gx * 2, 6 + gy * 2, PAL.calGrid);
+        }
+      }
+      // today's marker
+      img.rect(7, 8, 2, 2, PAL.calMark);
     }),
   },
   // 2×2 window (themed: day sky / night sky)
@@ -770,6 +955,22 @@ export const TILE_DEFS = [
       img.rect(13, 6, 1, 2, PAL.paperShade);
     }),
   },
+  // leather lounge sofas (1×3), vertical isometric, facing east / west
+  ...['e', 'w'].flatMap((face) =>
+    ['t', 'm', 'b'].map((row, j) => ({
+      name: `sofa_${face}_${row}`,
+      draw(img) {
+        copyRegion(img, sofaBig(face), 0, j * 32);
+      },
+    })),
+  ),
+  // lounge coffee table (2×1)
+  ...['l', 'r'].map((side, i) => ({
+    name: `coffee_table_${side}`,
+    draw(img) {
+      copyRegion(img, coffeeTableBig(), i * 32, 0);
+    },
+  })),
 ];
 
 export const TILE_NAMES = TILE_DEFS.map((def) => def.name);

@@ -66,8 +66,27 @@ export interface OfficeSceneTheme {
    * chip reads as a nameplate on the desk's front edge.
    */
   agentLabelOffsetY?: number;
+  /**
+   * Agent statuses that play the sprite's `idle` animation state; every
+   * other status plays `active` (e.g. a typing loop). Only applies when the
+   * agent's sprite declares animation `states`. Defaults to `['idle']`.
+   */
+  agentIdleStatuses?: AgentStatus[];
   agentLabel?: Partial<OfficeSceneThemeLabelStyle>;
   objectLabel?: Partial<OfficeSceneThemeLabelStyle>;
+}
+
+/**
+ * A named slice of a sprite strip used for status-driven animation, e.g. an
+ * agent that holds a still `idle` pose but plays a `typing` loop while busy.
+ */
+export interface SpriteAnimationState {
+  /** First frame index (0-based) of this state in the strip. */
+  from: number;
+  /** Number of frames in the state; defaults to 1 (a single still frame). */
+  count?: number;
+  /** PIXI.AnimatedSprite speed for this state; 0 / one frame ⇒ held still. */
+  speed?: number;
 }
 
 /**
@@ -83,6 +102,13 @@ export interface SpriteAssetConfig {
   frameCount?: number;
   /** PIXI.AnimatedSprite speed; sensible idle default applied if omitted. */
   animationSpeed?: number;
+  /**
+   * Named frame ranges for status-driven animation. Agents look for an
+   * `idle` state and an `active` state: the idle pose is held while the
+   * agent is idle, the active loop plays while it works (see
+   * `theme.agentIdleStatuses`). Omit for a plain static / looping sprite.
+   */
+  states?: Record<string, SpriteAnimationState>;
 }
 
 export interface AgentSceneConfig {

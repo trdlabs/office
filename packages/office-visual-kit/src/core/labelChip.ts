@@ -36,6 +36,16 @@ export function createLabelChip(
       fill: color,
       fontWeight: '700',
       letterSpacing: 0.5,
+      // The pixel display font may not be loaded; a dark outline + a 1px
+      // drop shadow keep the (fallback monospace) text heavy and legible.
+      stroke: { color: '#0a0c14', width: Math.max(1, fontSize * 0.16) },
+      dropShadow: {
+        color: '#000000',
+        alpha: 0.5,
+        blur: 0,
+        angle: Math.PI / 2,
+        distance: 1,
+      },
     }),
     resolution: 4,
   });

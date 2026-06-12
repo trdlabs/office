@@ -173,6 +173,30 @@ export const PAL = {
   cork: '#c9a06a',
   corkDark: '#b08a58',
 
+  // --- leather lounge sofas (executive area behind the boss) ----------------
+  leather: '#8a4f2c',
+  leatherHi: '#a8693c',
+  leatherDark: '#5e3318',
+  leatherSeam: '#46240f',
+  leatherSheen: '#c08a54',
+  leatherFoot: '#2c1a0c',
+  leatherPiping: '#d8b483',
+
+  // --- coffee table (lounge) ------------------------------------------------
+  cofTop: '#a8794a',
+  cofHi: '#c89a64',
+  cofDark: '#6e4a28',
+  cofLeg: '#553a20',
+
+  // --- wall calendar --------------------------------------------------------
+  calPaper: '#f4efe2',
+  calPaperShade: '#ddd6c4',
+  calHeader: '#b8554f',
+  calHeaderHi: '#cf6a63',
+  calGrid: '#b7af9d',
+  calMark: '#4f9cff',
+  calRing: '#8a8276',
+
   // --- characters -----------------------------------------------------------------
   outline: '#26222b',
   eye: '#2a2533',
