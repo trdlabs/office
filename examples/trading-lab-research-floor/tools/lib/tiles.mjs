@@ -12,10 +12,13 @@ import { nightify, PAL } from './palette.mjs';
  * derived via `nightify()` (see palette.mjs). Tiles that need real night art
  * (windows) are `themed` and draw per theme.
  *
- * Workstations face the viewer (Iteration 3): the desk is a 2×1-tile block
- * with a laptop on it, lid back toward the viewer, and the agent sits
- * BEHIND it (one row up), front-facing. The laptop lid carries a single
- * glowing glyph — a generic mark, no real-world logo, no fake charts.
+ * Workstations face the viewer (Iteration 3/4): the desk is a 2×1-tile
+ * block with a slim aluminum desktop monitor on it whose screen faces the
+ * agent — the viewer sees the monitor's BACK with a single glowing mark
+ * (generic, no real-world logo, no fake charts). The agent sits BEHIND the
+ * desk (one row up), front-facing. The floor is ONE shared plank texture —
+ * no zone carpets; desks contrast through dark espresso wood + the light
+ * aluminum monitor.
  */
 
 export const TILE_SIZE = 32;
@@ -68,51 +71,6 @@ function plankFloor(img, seed, base) {
   }
 }
 
-function rugTile(img, edges, colors) {
-  img.rect(0, 0, 16, 16, colors.base);
-  for (let y = 0; y < 16; y++) {
-    for (let x = 0; x < 16; x++) {
-      if ((x * 7 + y * 5) % 13 < 2) img.px(x, y, colors.dot);
-    }
-  }
-  if (edges.top) {
-    img.hline(0, 15, 0, colors.edge);
-    img.hline(0, 15, 1, colors.border);
-  }
-  if (edges.bottom) {
-    img.hline(0, 15, 15, colors.edge);
-    img.hline(0, 15, 14, colors.border);
-  }
-  if (edges.left) {
-    img.vline(0, 0, 15, colors.edge);
-    img.vline(1, 0, 15, colors.border);
-  }
-  if (edges.right) {
-    img.vline(15, 0, 15, colors.edge);
-    img.vline(14, 0, 15, colors.border);
-  }
-  if (colors.corner && edges.top && edges.left) img.px(3, 3, colors.corner);
-  if (colors.corner && edges.top && edges.right) img.px(12, 3, colors.corner);
-  if (colors.corner && edges.bottom && edges.left) img.px(3, 12, colors.corner);
-  if (colors.corner && edges.bottom && edges.right) img.px(12, 12, colors.corner);
-}
-
-const BOSS_RUG_COLORS = {
-  base: PAL.brug,
-  dot: PAL.brugDot,
-  border: PAL.brugBorder,
-  edge: PAL.brugEdge,
-  corner: PAL.brugGold,
-};
-
-/** Cool office carpet under the desk wings — contrast against the planks. */
-const WORK_CARPET_COLORS = {
-  base: PAL.crug,
-  dot: PAL.crugDot,
-  border: PAL.crugBorder,
-  edge: PAL.crugEdge,
-};
-
 /** Raised tech floor inside the glass server room. */
 function techFloor(img) {
   img.rect(0, 0, 16, 16, PAL.techFloor);
@@ -126,18 +84,6 @@ function techFloor(img) {
   // one status LED per tile — glows at night via the emissive pass
   img.px(13, 10, PAL.cyan);
 }
-
-const RUG_EDGES = {
-  tl: { top: true, left: true },
-  t: { top: true },
-  tr: { top: true, right: true },
-  l: { left: true },
-  c: {},
-  r: { right: true },
-  bl: { bottom: true, left: true },
-  b: { bottom: true },
-  br: { bottom: true, right: true },
-};
 
 // ---------------------------------------------------------------------------
 // walls (logical 16×16)
@@ -348,8 +294,10 @@ function vendingBig() {
 }
 
 // ---------------------------------------------------------------------------
-// workstation desks (2×1 tiles: desk surface + laptop, lid back toward the
-// viewer; the agent sits BEHIND the desk, one row up, facing the viewer)
+// workstation desks (2×1 tiles: dark espresso desk + a slim aluminum
+// desktop monitor whose SCREEN faces the agent — the viewer sees its back
+// with a single glowing mark (generic, no real-world logo). The agent sits
+// BEHIND the desk, one row up, facing the viewer.
 // ---------------------------------------------------------------------------
 
 const _desks = new Map();
@@ -359,7 +307,7 @@ function deskBig(variant) {
   if (cached) return cached;
   const img = new Img(32, 16); // logical 32×16 → 64×32 px (2×1 tiles)
 
-  // --- desk body: surface + front face, outlined dark -----------------------
+  // --- desk body: surface + front face, outlined near-black -----------------
   img.rect(1, 4, 30, 10, PAL.deskTop);
   img.hline(2, 29, 4, PAL.deskHi);
   img.hline(2, 29, 5, PAL.deskHi);
@@ -373,28 +321,21 @@ function deskBig(variant) {
   img.rect(3, 14, 2, 2, PAL.deskLeg);
   img.rect(27, 14, 2, 2, PAL.deskLeg);
 
-  // --- laptop centred, lid back toward the viewer ---------------------------
-  // The lid rises above the desk edge so it overlaps the agent's chest.
-  img.rect(12, 0, 8, 7, PAL.bezel);
-  img.outline(12, 0, 8, 7, PAL.bezelDark);
-  img.hline(13, 18, 1, PAL.bezelHi);
-  // hinge + base peeking out at the bottom of the lid
-  img.hline(11, 20, 7, PAL.bezelDark);
-  img.hline(12, 19, 8, PAL.bezelHi);
-
-  // a single glowing mark on the lid — generic, no real-world logo
-  if (variant === 'a') {
-    // pulse bars
-    img.rect(14, 3, 1, 2, PAL.cyanDim);
-    img.rect(16, 2, 1, 3, PAL.cyan);
-    img.rect(18, 3, 1, 2, PAL.cyanDim);
-  } else {
-    // terminal chevron
-    img.px(14, 2, PAL.green);
-    img.px(15, 3, PAL.green);
-    img.px(14, 4, PAL.green);
-    img.rect(17, 4, 2, 1, PAL.greenDim);
-  }
+  // --- slim aluminum monitor, back to the viewer -----------------------------
+  // The slab rises above the desk edge so it overlaps the agent's chest.
+  // Rounded by construction: the top row is one px narrower on each side.
+  img.rect(10, 1, 12, 7, PAL.alu);
+  img.hline(11, 20, 0, PAL.aluHi);
+  img.hline(11, 20, 1, PAL.aluHi);
+  img.vline(10, 1, 6, PAL.aluEdge);
+  img.vline(21, 1, 6, PAL.aluEdge);
+  img.hline(10, 21, 7, PAL.aluDark);
+  // glowing mark centred on the back — generic, no real-world logo
+  img.rect(15, 3, 2, 2, PAL.markGlow);
+  img.px(16, 2, PAL.markGlow);
+  // stand: neck + foot on the desk
+  img.rect(15, 8, 2, 2, PAL.aluDark);
+  img.rect(13, 10, 6, 1, PAL.aluEdge);
 
   // --- desk dressing per variant --------------------------------------------
   if (variant === 'a') {
@@ -417,42 +358,59 @@ function deskBig(variant) {
 }
 
 // ---------------------------------------------------------------------------
-// boss command console (4×1 tiles). Drawn as tiles — not a sprite object —
-// so the Boss's nameplate chip (rendered in the entity layer) always draws
-// above it. The Boss sits BEHIND it facing the viewer: the three command
-// monitors show their BACKS (vents, stands, status LEDs — no fake charts).
+// boss command console (4×2 tiles, mahogany). Drawn as tiles — not a sprite
+// object — so the Boss's nameplate chip (rendered in the entity layer)
+// always draws above it. The Boss sits BEHIND it facing the viewer: the
+// three aluminum monitors show their BACKS (screens face the Boss), each
+// with the same glowing generic mark as the workstation monitors.
 // ---------------------------------------------------------------------------
 
 let _console = null;
 
 function consoleBig() {
   if (_console) return _console;
-  const img = new Img(64, 16); // logical 64×16 → 128×32 px (4×1 tiles)
-  // wide command desk
-  img.rect(1, 8, 62, 7, PAL.consoleTop);
-  img.hline(2, 61, 8, PAL.consoleTopHi);
-  img.rect(2, 12, 60, 3, PAL.consoleFace);
-  img.hline(2, 61, 12, PAL.gold);
-  img.outline(1, 8, 62, 7, '#2b2448');
-  img.rect(4, 15, 3, 1, PAL.consoleLeg);
-  img.rect(57, 15, 3, 1, PAL.consoleLeg);
-  // three monitor backs (center one slightly taller)
-  const back = (x, y, h, led) => {
-    img.rect(x, y, 14, h, PAL.bezel);
-    img.outline(x, y, 14, h, '#10131c');
-    img.hline(x + 1, x + 12, y + 1, PAL.bezelHi);
-    img.hline(x + 3, x + 10, y + 3, PAL.bezelDark);
-    img.hline(x + 3, x + 10, y + 5, PAL.bezelDark);
-    img.rect(x + 6, y + h, 2, Math.max(1, 9 - (y + h)), PAL.bezelDark); // stand
-    img.px(x + 11, y + h - 2, led);
+  const img = new Img(64, 32); // logical 64×32 → 128×64 px (4×2 tiles)
+
+  // --- deep mahogany executive desk -----------------------------------------
+  // top surface
+  img.rect(1, 10, 62, 9, PAL.mahogany);
+  img.hline(2, 61, 10, PAL.mahoganyHi);
+  img.hline(2, 61, 11, PAL.mahoganyHi);
+  img.hline(3, 60, 14, PAL.mahoganyGrain);
+  img.hline(3, 60, 16, PAL.mahoganyGrain);
+  // front face with raised panels + a gold inlay line under the desktop
+  img.rect(2, 19, 60, 9, PAL.mahoganyFace);
+  img.hline(2, 61, 19, PAL.gold);
+  for (const px of [6, 26, 46]) {
+    img.outline(px, 21, 12, 6, PAL.mahoganyDark);
+    img.hline(px + 1, px + 10, 22, PAL.mahoganyHi);
+  }
+  img.outline(1, 10, 62, 18, PAL.mahoganyOutline);
+  // legs + floor shadow
+  img.rect(3, 28, 4, 3, PAL.mahoganyLeg);
+  img.rect(57, 28, 4, 3, PAL.mahoganyLeg);
+  img.hline(4, 59, 31, '#00000033');
+
+  // --- three aluminum monitor backs (center one larger) ----------------------
+  const back = (x, y, w, h) => {
+    img.rect(x, y + 1, w, h - 1, PAL.alu);
+    img.hline(x + 1, x + w - 2, y, PAL.aluHi);
+    img.hline(x + 1, x + w - 2, y + 1, PAL.aluHi);
+    img.vline(x, y + 1, y + h - 2, PAL.aluEdge);
+    img.vline(x + w - 1, y + 1, y + h - 2, PAL.aluEdge);
+    img.hline(x, x + w - 1, y + h - 1, PAL.aluDark);
+    // glowing mark on the back
+    const cx = x + Math.floor(w / 2) - 1;
+    const cy = y + Math.floor(h / 2) - 1;
+    img.rect(cx, cy, 2, 2, PAL.markGlow);
+    img.px(cx + 1, cy - 1, PAL.markGlow);
+    // stand down to the desktop
+    img.rect(cx, y + h, 2, Math.max(1, 11 - (y + h)), PAL.aluDark);
   };
-  back(7, 2, 6, PAL.cyan);
-  back(25, 1, 7, PAL.violet);
-  back(43, 2, 6, PAL.gold);
-  // screen glow spilling over the top edges (screens face the Boss)
-  img.hline(9, 19, 1, PAL.cyanDark);
-  img.hline(27, 37, 0, '#46356e');
-  img.hline(45, 55, 1, PAL.goldDim);
+  back(7, 2, 13, 8);
+  back(25, 0, 14, 10);
+  back(44, 2, 13, 8);
+
   return (_console = upscale(img, 2));
 }
 
@@ -478,16 +436,30 @@ function glassWallH(img) {
   img.hline(0, 15, 13, PAL.glassFrameDark);
 }
 
-/** Sliding glass door leaf; `side` = 'l' | 'r' (handle on the inner edge). */
+/**
+ * Sliding glass door leaf; `side` = 'l' | 'r'. Reads as a DOOR, not a wall
+ * segment: a header track on top, a tall pane running down to the floor (no
+ * base rail), a dark frame post on the outer edge and a handle bar + sensor
+ * LED on the meeting edge.
+ */
 function glassDoor(img, side) {
-  glassWallH(img);
-  const inner = side === 'l' ? 13 : 2;
-  // handle bar + sensor LED
-  img.vline(inner, 4, 11, PAL.glassFrameHi);
+  // header track
+  img.rect(0, 2, 16, 2, PAL.glassFrame);
+  img.hline(0, 15, 2, PAL.glassFrameHi);
+  img.hline(0, 15, 3, PAL.glassFrameDark);
+  // tall pane to the floor — the open path under it sells the doorway
+  img.rect(1, 4, 14, 11, PAL.glassPane);
+  img.px(3, 6, PAL.glassPaneHi);
+  img.px(4, 7, PAL.glassPaneHi);
+  img.px(10, 11, PAL.glassPaneHi);
+  // outer frame post + meeting-edge stile with handle and sensor
+  const outer = side === 'l' ? 0 : 15;
+  const inner = side === 'l' ? 14 : 1;
+  img.vline(outer, 2, 14, PAL.glassFrameDark);
+  img.vline(side === 'l' ? 15 : 0, 4, 14, PAL.glassFrameHi);
+  img.vline(inner, 5, 12, PAL.glassFrameDark);
+  img.vline(inner, 7, 10, PAL.glassFrameHi);
   img.px(inner, 6, PAL.cyan);
-  // mark the leaf gap between the two door tiles
-  const edge = side === 'l' ? 15 : 0;
-  img.vline(edge, 3, 12, PAL.glassFrameHi);
 }
 
 /** Vertical run (wall runs north-south): a narrow framed band. */
@@ -500,13 +472,29 @@ function glassWallV(img) {
   img.px(7, 13, PAL.glassPaneHi);
 }
 
-/** Corner where the horizontal partition meets a vertical side wall. */
-function glassCorner(img) {
-  glassWallH(img);
-  // stub running south to meet the vertical wall in the tile below
-  img.rect(6, 12, 4, 4, PAL.glassPane);
-  img.vline(6, 12, 15, PAL.glassFrameDark);
-  img.vline(9, 12, 15, PAL.glassFrameHi);
+/**
+ * Corner tile: the horizontal run stops AT the vertical band instead of
+ * crossing the whole tile, so the partition meets the side wall in a clean
+ * right angle. `side` = 'l' (room's top-left corner) | 'r' (top-right).
+ */
+function glassCorner(img, side) {
+  const x0 = side === 'l' ? 6 : 0;
+  const x1 = side === 'l' ? 15 : 9;
+  // clipped horizontal run: cap, pane, base rail
+  img.rect(x0, 2, x1 - x0 + 1, 2, PAL.glassFrame);
+  img.hline(x0, x1, 2, PAL.glassFrameHi);
+  img.rect(x0 + 1, 4, x1 - x0 - 1, 8, PAL.glassPane);
+  img.px(x0 + 3, 5, PAL.glassPaneHi);
+  img.px(x0 + 5, 8, PAL.glassPaneHi);
+  img.rect(x0, 12, x1 - x0 + 1, 2, PAL.glassFrame);
+  img.hline(x0, x1, 13, PAL.glassFrameDark);
+  // vertical band continuing south to meet the wall in the tile below
+  img.rect(6, 2, 4, 14, PAL.glassPane);
+  img.vline(6, 2, 15, PAL.glassFrameDark);
+  img.vline(9, 2, 15, PAL.glassFrameHi);
+  // corner post
+  img.rect(6, 2, 4, 2, PAL.glassFrame);
+  img.hline(6, 9, 2, PAL.glassFrameHi);
 }
 
 // ---------------------------------------------------------------------------
@@ -583,15 +571,6 @@ export const TILE_DEFS = [
       else img.vline(13, 3, 13, PAL.matLine);
       for (let i = 0; i < 3; i++) img.hline(x + 2, x + w - 3, 6 + i * 3, PAL.matLine);
     }),
-  })),
-  ...Object.entries(RUG_EDGES).map(([key, edges]) => ({
-    name: `brug_${key}`,
-    draw: chunky((img) => rugTile(img, edges, BOSS_RUG_COLORS)),
-  })),
-  // work-zone carpet under the desk wings (9-slice like the boss rug)
-  ...Object.entries(RUG_EDGES).map(([key, edges]) => ({
-    name: `crug_${key}`,
-    draw: chunky((img) => rugTile(img, edges, WORK_CARPET_COLORS)),
   })),
   // raised tech floor inside the glass server room
   { name: 'floor_tech', draw: chunky(techFloor) },
@@ -673,19 +652,22 @@ export const TILE_DEFS = [
       },
     })),
   ),
-  // 4×1 boss command console (monitor backs toward the viewer)
-  ...['l', 'ml', 'mr', 'r'].map((part, i) => ({
-    name: `console_${part}`,
-    draw(img) {
-      copyRegion(img, consoleBig(), i * 32, 0);
-    },
-  })),
+  // 4×2 boss command console (mahogany, monitor backs toward the viewer)
+  ...['l', 'ml', 'mr', 'r'].flatMap((part, i) =>
+    ['t', 'b'].map((row, j) => ({
+      name: `console_${part}_${row}`,
+      draw(img) {
+        copyRegion(img, consoleBig(), i * 32, j * 32);
+      },
+    })),
+  ),
   // glass partition of the infra/server room
   { name: 'glass_h', draw: chunky(glassWallH) },
   { name: 'glass_door_l', draw: chunky((img) => glassDoor(img, 'l')) },
   { name: 'glass_door_r', draw: chunky((img) => glassDoor(img, 'r')) },
   { name: 'glass_v', draw: chunky(glassWallV) },
-  { name: 'glass_corner', draw: chunky(glassCorner) },
+  { name: 'glass_corner_l', draw: chunky((img) => glassCorner(img, 'l')) },
+  { name: 'glass_corner_r', draw: chunky((img) => glassCorner(img, 'r')) },
   {
     name: 'bookshelf_top',
     draw(img) {
@@ -716,28 +698,30 @@ export const TILE_DEFS = [
   {
     name: 'plant_small',
     draw: chunky((img) => {
-      img.rect(6, 11, 4, 3, PAL.pot);
-      img.hline(5, 10, 11, PAL.potRim);
-      img.rect(6, 6, 4, 5, PAL.leafDark);
-      img.rect(7, 5, 2, 4, PAL.leaf);
-      img.px(7, 4, PAL.leafHi);
-      img.px(6, 7, PAL.leafHi);
+      img.rect(6, 13, 4, 3, PAL.pot);
+      img.hline(5, 10, 13, PAL.potRim);
+      img.rect(6, 8, 4, 5, PAL.leafDark);
+      img.rect(7, 7, 2, 4, PAL.leaf);
+      img.px(7, 6, PAL.leafHi);
+      img.px(6, 9, PAL.leafHi);
     }),
   },
   {
-    // office bin: wide ribbed body, dark rim with a swing slot
+    // office bin: wide ribbed body, dark rim with a swing slot. Drawn at
+    // the BOTTOM of the tile so a bin placed on the wall row stands flush
+    // against the baseboard.
     name: 'trash_bin',
     draw: chunky((img) => {
-      img.rect(4, 6, 8, 8, PAL.bin);
-      img.outline(4, 6, 8, 8, PAL.binDark);
-      for (let x = 6; x <= 10; x += 2) img.vline(x, 7, 12, PAL.binDark);
-      img.vline(5, 7, 12, PAL.binHi);
+      img.rect(4, 7, 8, 8, PAL.bin);
+      img.outline(4, 7, 8, 8, PAL.binDark);
+      for (let x = 6; x <= 10; x += 2) img.vline(x, 8, 13, PAL.binDark);
+      img.vline(5, 8, 13, PAL.binHi);
       // rim + swing slot
-      img.rect(3, 4, 10, 2, PAL.binDark);
-      img.hline(3, 12, 4, PAL.binHi);
-      img.rect(6, 5, 4, 1, '#10131f');
+      img.rect(3, 5, 10, 2, PAL.binDark);
+      img.hline(3, 12, 5, PAL.binHi);
+      img.rect(6, 6, 4, 1, '#10131f');
       // base shadow
-      img.hline(5, 10, 14, PAL.binDark);
+      img.hline(5, 10, 15, PAL.binDark);
     }),
   },
   {

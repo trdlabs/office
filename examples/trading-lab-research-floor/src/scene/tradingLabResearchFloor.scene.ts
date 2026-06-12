@@ -113,12 +113,16 @@ export function createTradingLabResearchFloorScene(
     theme: FLOOR_THEMES[themeName].theme,
 
     assets: [
+      // Agents are composed from real Universal LPC Spritesheet Character
+      // Generator layers (see public/assets/third-party/lpc/ for sources,
+      // attributions and licenses). Both frames are identical — agents sit
+      // still, no idle bobbing.
       ...AGENT_SPRITES.map((role) => ({
         key: `agent:${role}`,
-        url: `/assets/generated/agents/agent-${role}.png`,
-        frameWidth: 32,
+        url: `/assets/third-party/lpc/agent-${role}.png`,
+        frameWidth: 64,
         frameCount: 2,
-        animationSpeed: 0.02,
+        animationSpeed: 0,
       })),
       ...PROP_SPRITES.map(({ key, file, frameWidth }) => ({
         key,
@@ -136,6 +140,9 @@ export function createTradingLabResearchFloorScene(
         displayName: 'Boss / Orchestrator',
         label: 'Boss',
         initialStatus: 'thinking',
+        // The 4×2 mahogany console is deeper than a workstation desk: push
+        // the nameplate further down so it lands on the console's front face.
+        labelOffsetY: 44,
       },
       {
         id: 'analyst',

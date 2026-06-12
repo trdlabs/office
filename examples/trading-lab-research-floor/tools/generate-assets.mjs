@@ -9,7 +9,6 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { AGENT_ROLES, drawAgentFrames } from './lib/agents.mjs';
 import { strip } from './lib/img.mjs';
 import { encodePng } from './lib/png.mjs';
 import { PROP_DEFS } from './lib/props.mjs';
@@ -37,10 +36,9 @@ console.log(
   `  tileset: ${TILE_DEFS.length} tiles, ${TILESET_COLUMNS} columns, tile ${TILE_SIZE}px, themes: ${THEMES.join(', ')}`,
 );
 
-// 2. Agents (2-frame idle strips)
-for (const role of AGENT_ROLES) {
-  writePng(join('agents', `agent-${role}.png`), strip(drawAgentFrames(role)));
-}
+// 2. Agents are NOT generated here — they are composed from real Universal
+//    LPC Spritesheet Character Generator layers by tools/compose-lpc-agents.mjs
+//    into public/assets/third-party/lpc/ (committed, with attribution docs).
 
 // 3. Interactive object props (2-frame strips)
 for (const prop of PROP_DEFS) {

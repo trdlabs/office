@@ -70,8 +70,12 @@ export class AgentView implements EntityView {
     if (options.showLabel) {
       this.labelChip = createLabelChip(entity.label, theme.agentLabel);
       // agentLabelOffsetY pushes the chip down past the desk block on
-      // floors where the agent sits behind its desk (desk nameplate).
-      this.labelChip.container.position.set(0, 3 + (theme.agentLabelOffsetY ?? 0));
+      // floors where the agent sits behind its desk (desk nameplate);
+      // entity.labelOffsetY overrides per agent (e.g. a deeper boss desk).
+      this.labelChip.container.position.set(
+        0,
+        3 + (entity.labelOffsetY ?? theme.agentLabelOffsetY ?? 0),
+      );
       this.labelChip.container.visible = this.labelMode === 'always';
       this.container.addChild(this.labelChip.container);
     } else {

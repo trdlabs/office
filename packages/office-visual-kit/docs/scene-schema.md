@@ -70,6 +70,9 @@ Convention for keys: `agent:<role>` for agent sprites (the default lookup),
   initialStatus: 'thinking',
   sprite: 'agent:researcher',   // optional override
   showLabel: true,
+  labelOffsetY: 44,             // optional per-agent override of
+                                // theme.agentLabelOffsetY (deeper desks,
+                                // e.g. the Boss's 4×2 console)
 }
 ```
 

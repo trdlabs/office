@@ -59,19 +59,6 @@ export const PAL = {
   matLine: '#7c6a56',
   matHi: '#a6927c',
 
-  // --- office rugs -----------------------------------------------------------
-  brug: '#a39ab8',
-  brugDot: '#aba2c0',
-  brugBorder: '#8a81a4',
-  brugEdge: '#797194',
-  brugGold: '#caa54b',
-
-  // --- work-zone carpet (under the desk wings) --------------------------------
-  crug: '#97a3ae',
-  crugDot: '#a0abb6',
-  crugBorder: '#7e8a98',
-  crugEdge: '#6e7a88',
-
   // --- infra room: glass partition + raised tech floor ------------------------
   glassFrame: '#7e8a96',
   glassFrameHi: '#98a4b0',
@@ -122,15 +109,32 @@ export const PAL = {
   handle: '#caa54b',
 
   // --- desks / wood furniture --------------------------------------------------
-  // Iteration 3: desks went two shades darker (walnut) + a near-black
-  // outline so workstations never blend into the light plank floor.
-  deskTop: '#9c6e40',
-  deskHi: '#b08350',
-  deskGrain: '#8a5f36',
-  deskFace: '#7a5330',
-  deskDark: '#603f23',
-  deskLeg: '#46301c',
-  deskOutline: '#332414',
+  // Iteration 4: one shared plank floor (no carpets), so desks dropped to a
+  // dark espresso + near-black outline, and every workstation carries a
+  // light aluminum monitor — strong contrast against the warm planks.
+  deskTop: '#7e5532',
+  deskHi: '#936846',
+  deskGrain: '#6d4829',
+  deskFace: '#5f3f24',
+  deskDark: '#4a3019',
+  deskLeg: '#362312',
+  deskOutline: '#241708',
+
+  // --- aluminum desktop monitor (back to the viewer, screen to the agent) -----
+  alu: '#c5ccd4',
+  aluHi: '#e0e6ec',
+  aluDark: '#98a1ac',
+  aluEdge: '#6e7884',
+  markGlow: '#3f8fe8',
+
+  // --- boss mahogany console ---------------------------------------------------
+  mahogany: '#8a4630',
+  mahoganyHi: '#a05a3c',
+  mahoganyGrain: '#74381f',
+  mahoganyFace: '#6b3018',
+  mahoganyDark: '#532413',
+  mahoganyLeg: '#3c1a0d',
+  mahoganyOutline: '#2a1008',
   shelfFrame: '#96704a',
   shelfDark: '#6f5236',
   shelfBoard: '#7e5e3e',
@@ -180,10 +184,6 @@ export const PAL = {
   rackBody: '#272c36',
   rackPanel: '#323845',
   rackDark: '#1a1e26',
-  consoleTop: '#564a82',
-  consoleTopHi: '#695c98',
-  consoleFace: '#463c6e',
-  consoleLeg: '#332b54',
 };
 
 /** Colors that keep glowing in the derived night tileset. */
@@ -197,6 +197,7 @@ export const EMISSIVE = [
   PAL.violet,
   PAL.gold,
   PAL.sun,
+  PAL.markGlow,
 ];
 
 const emissiveSet = new Set(
@@ -220,104 +221,9 @@ export function nightify(img) {
   return out;
 }
 
-/**
- * Per-role looks for the front-facing seated agents (LPC-inspired
- * proportions, fully original pixels). Agents face the viewer, so a role
- * reads through hair style + color, the outfit on the torso (suit, blazer,
- * hoodie, shirt+tie, tee, turtleneck, vest) and face-level accessories
- * (glasses, cap, headset).
- *
- * `executive: true` switches to the tall winged command chair (Boss).
- */
-export const ROLE_STYLES = {
-  boss: {
-    skin: '#e8b48c',
-    hair: '#3d3450',
-    hairShade: '#2e2840',
-    top: '#5a4a96',
-    topShade: '#4a3d7e',
-    accent: '#ffd166',
-    hairStyle: 'slick',
-    outfit: 'suit',
-    accessory: null,
-    executive: true,
-  },
-  strategy_analyst: {
-    skin: '#c98c5e',
-    hair: '#2e4060',
-    hairShade: '#233148',
-    top: '#2f96a3',
-    topShade: '#26818c',
-    accent: '#59f7d4',
-    hairStyle: 'long',
-    outfit: 'blazer',
-    accessory: 'glasses',
-  },
-  researcher: {
-    skin: '#f0c8a0',
-    hair: '#7a4a2e',
-    hairShade: '#633b24',
-    top: '#4a945d',
-    topShade: '#3d7e4e',
-    accent: '#d8efc8',
-    hairStyle: 'bun',
-    outfit: 'turtleneck',
-    accessory: null,
-  },
-  critic: {
-    skin: '#e8b48c',
-    hair: '#6e3636',
-    hairShade: '#592b2b',
-    top: '#cd803a',
-    topShade: '#b26c2e',
-    accent: '#ff5d5d',
-    hairStyle: 'short',
-    outfit: 'shirt_tie',
-    accessory: null,
-  },
-  builder: {
-    skin: '#c98c5e',
-    hair: '#3a2a1c',
-    hairShade: '#2d2015',
-    top: '#3e6cb4',
-    topShade: '#345a98',
-    accent: '#e09040',
-    accentShade: '#b8742f',
-    hairStyle: 'short',
-    outfit: 'hoodie',
-    accessory: 'cap',
-  },
-  evaluator: {
-    skin: '#f0c8a0',
-    hair: '#c9a23e',
-    hairShade: '#a98631',
-    top: '#5d61b2',
-    topShade: '#4e5298',
-    accent: '#8ec4ff',
-    hairStyle: 'ponytail',
-    outfit: 'tee',
-    accessory: null,
-  },
-  performance_monitor: {
-    skin: '#e8b48c',
-    hair: '#2e4434',
-    hairShade: '#243629',
-    top: '#56a268',
-    topShade: '#478a57',
-    accent: '#69e85e',
-    hairStyle: 'short',
-    outfit: 'tee',
-    accessory: 'headset',
-  },
-  knowledge_curator: {
-    skin: '#d8a878',
-    hair: '#8a7ab0',
-    hairShade: '#746597',
-    top: '#8a76c4',
-    topShade: '#7563ab',
-    accent: '#ffd166',
-    hairStyle: 'curly',
-    outfit: 'hoodie',
-    accessory: null,
-  },
-};
+// Iteration 4 note: agent sprites are no longer drawn from a ROLE_STYLES
+// table here — they are composed from real Universal LPC Spritesheet
+// Character Generator layers by `tools/compose-lpc-agents.mjs` (output and
+// licensing docs live in public/assets/third-party/lpc/). `PAL.chair` /
+// `PAL.execChair*` above are still used by that script for the original
+// office chairs drawn behind the LPC figures.

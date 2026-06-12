@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit",
     "generate": "node tools/generate-assets.mjs && node tools/generate-map.mjs",
     "generate:assets": "node tools/generate-assets.mjs",
-    "generate:map": "node tools/generate-map.mjs"
+    "generate:map": "node tools/generate-map.mjs",
+    "compose:lpc": "node tools/compose-lpc-agents.mjs"
   },
   "dependencies": {
     "@pixi/react": "^8.0.0",

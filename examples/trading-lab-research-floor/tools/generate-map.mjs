@@ -6,23 +6,27 @@
  * open in the Tiled editor; this script only exists so the example layout is
  * reproducible and reviewable in code.
  *
- * Visual Iteration 3 layout (20×17 tiles, 640×544 world). Workstations face
+ * Visual Iteration 4 layout (20×17 tiles, 640×544 world). Workstations face
  * the viewer: the agent sits BEHIND its desk (one tile row above it),
- * front-facing, with the laptop lid back toward the camera; the nameplate
+ * front-facing, with the monitor's back toward the camera; the nameplate
  * chip is rendered by the kit over the desk's front edge.
  *
+ * - one shared plank floor (no zone carpets) — desks contrast through dark
+ *   espresso wood + light aluminum monitors;
  * - top wall: window, hypothesis board and backtests monitor symmetric
  *   around the centered door, vent/clock/poster/notice in the gaps;
- * - entrance flanks: vending machine + trash bin left of the door, the big
- *   water cooler + trash bin right of it;
- * - left wing on carpet: Analyst / Researcher / Critic, desks at x=2..3;
- * - right wing on carpet: Builder / Evaluator / Performance Monitor;
- * - center: the Boss behind a 4-tile command console on the boss rug
- *   (console = furniture tiles; `boss-console` object is a pure hit-area);
- * - below the Boss: a glass-walled infra/server room (tech floor) holding
- *   the server rack, archive shelf and bot status monitor;
- * - bottom-left: bookshelves against the wall; bottom-right: coffee corner;
- * - plants fill the seams. No decorative floor text.
+ * - entrance flanks FLUSH against the wall: vending machine + trash bin
+ *   left of the door, trash bin + the big water cooler right of it;
+ * - left wing: Analyst / Researcher / Critic at x=2..3, rows 5/9/13
+ *   (4-row pitch keeps status badges clear of the next nameplate);
+ * - right wing: Builder / Evaluator / Performance Monitor;
+ * - center: the Boss behind a deep 4×2 mahogany command console, screen
+ *   center, one row above the server room (console = furniture tiles;
+ *   `boss-console` object is a pure hit-area);
+ * - below the Boss: a glass-walled infra/server room (tech floor) with
+ *   square corners and a sliding glass door, holding the server rack,
+ *   archive shelf and bot status monitor;
+ * - bottom-right: coffee corner; plants in the corner seams.
  *
  * Usage: node tools/generate-map.mjs   (run generate-assets.mjs first)
  */
@@ -53,18 +57,6 @@ function set(layer, x, y, tile) {
   layer[y][x] = tileGid(tile);
 }
 
-/** Paint a bordered 9-slice rug (`prefix` = 'brug' | 'crug'). */
-function rugZone(layer, x, y, w, h, prefix) {
-  for (let yy = y; yy < y + h; yy++) {
-    for (let xx = x; xx < x + w; xx++) {
-      const v = yy === y ? 't' : yy === y + h - 1 ? 'b' : '';
-      const u = xx === x ? 'l' : xx === x + w - 1 ? 'r' : '';
-      const key = `${v}${u}` || 'c';
-      set(layer, xx, yy, `${prefix}_${key}`);
-    }
-  }
-}
-
 /** Place a 2×2 block whose tiles are named `<base>_tl/tr/bl/br`. */
 function block2x2(layer, x, y, base) {
   set(layer, x, y, `${base}_tl`);
@@ -86,7 +78,7 @@ const walls = grid();
 const furniture = grid();
 const decor = grid();
 
-// floor: warm plank checkerboard inside the walls
+// floor: ONE shared warm plank texture inside the walls (no zone carpets)
 for (let y = 3; y <= 15; y++) {
   for (let x = 1; x <= 18; x++) {
     set(floor, x, y, (x + y) % 2 === 0 ? 'floor_a' : 'floor_b');
@@ -96,13 +88,6 @@ for (let y = 3; y <= 15; y++) {
 for (let x = 1; x <= 18; x++) set(floor, x, 3, 'floor_shadow');
 set(floor, 9, 3, 'doormat_l');
 set(floor, 10, 3, 'doormat_r');
-
-// cool carpet under each desk wing (contrast against the planks)
-rugZone(floor, 1, 4, 4, 10, 'crug');
-rugZone(floor, 15, 4, 4, 10, 'crug');
-
-// command rug under the Boss console
-rugZone(floor, 7, 4, 6, 5, 'brug');
 
 // raised tech floor inside the glass server room
 for (let y = 13; y <= 15; y++) {
@@ -134,69 +119,67 @@ set(walls, 8, 1, 'wall_clock');
 set(walls, 12, 1, 'poster');
 set(walls, 18, 1, 'notice_board');
 
-// entrance flanks: vending machine + bin left of the door, the big water
-// cooler + bin right of it (1×2-tall units lean on the wall like shelves)
-set(furniture, 7, 2, 'vending_top');
-set(furniture, 7, 3, 'vending_bottom');
-set(furniture, 8, 3, 'trash_bin');
-set(furniture, 11, 2, 'water_cooler_top');
-set(furniture, 11, 3, 'water_cooler_bottom');
-set(furniture, 12, 3, 'trash_bin');
+// entrance flanks, FLUSH against the wall: the tall units span wall rows
+// 1-2 (feet land exactly on the wall base line), the bins sit on row 2.
+// Left of the door: vending machine + bin. Right of it: bin + the big
+// water cooler (cooler on the outside, bin next to the door).
+set(furniture, 7, 1, 'vending_top');
+set(furniture, 7, 2, 'vending_bottom');
+set(furniture, 8, 2, 'trash_bin');
+set(furniture, 11, 2, 'trash_bin');
+set(furniture, 12, 1, 'water_cooler_top');
+set(furniture, 12, 2, 'water_cooler_bottom');
 
-// workstations: 2×1 desk block with the laptop, agent seated BEHIND it
-// (one row up, front-facing); nameplate chip lands on the desk front
+// workstations: 2×1 desk block with the monitor (back to the viewer),
+// agent seated BEHIND it (one row up, front-facing); nameplate chip lands
+// on the desk front. 4-row pitch — statuses stay clear of neighbours.
 const DESKS = [
   // [x, deskY, variant]
-  [2, 6, 'desk_a'],
+  [2, 5, 'desk_a'],
   [2, 9, 'desk_b'],
-  [2, 12, 'desk_a'],
-  [16, 6, 'desk_b'],
+  [2, 13, 'desk_a'],
+  [16, 5, 'desk_b'],
   [16, 9, 'desk_a'],
-  [16, 12, 'desk_b'],
+  [16, 13, 'desk_b'],
 ];
 for (const [x, y, base] of DESKS) {
   set(furniture, x, y, `${base}_l`);
   set(furniture, x + 1, y, `${base}_r`);
 }
 
-// boss command console: 4 furniture tiles, monitors' backs to the viewer
-set(furniture, 8, 7, 'console_l');
-set(furniture, 9, 7, 'console_ml');
-set(furniture, 10, 7, 'console_mr');
-set(furniture, 11, 7, 'console_r');
+// boss command console: deep 4×2 mahogany desk, three monitor backs toward
+// the viewer; screen center, one clear row above the server room
+for (const [i, part] of ['l', 'ml', 'mr', 'r'].entries()) {
+  set(furniture, 8 + i, 9, `console_${part}_t`);
+  set(furniture, 8 + i, 10, `console_${part}_b`);
+}
 
-// glass-walled infra/server room below the Boss (door aligned with the
-// main entrance axis)
-set(furniture, 6, 12, 'glass_corner');
+// glass-walled infra/server room below the Boss: square corners (the
+// horizontal run stops at the vertical band) + a sliding glass door
+// aligned with the main entrance axis
+set(furniture, 6, 12, 'glass_corner_l');
 set(furniture, 7, 12, 'glass_h');
 set(furniture, 8, 12, 'glass_h');
 set(furniture, 9, 12, 'glass_door_l');
 set(furniture, 10, 12, 'glass_door_r');
 set(furniture, 11, 12, 'glass_h');
 set(furniture, 12, 12, 'glass_h');
-set(furniture, 13, 12, 'glass_corner');
+set(furniture, 13, 12, 'glass_corner_r');
 for (const gy of [13, 14, 15]) {
   set(furniture, 6, gy, 'glass_v');
   set(furniture, 13, gy, 'glass_v');
-}
-
-// bottom-left: bookshelves against the wall
-for (const bx of [2, 3]) {
-  set(furniture, bx, 14, 'bookshelf_top');
-  set(furniture, bx, 15, 'bookshelf_bottom');
 }
 
 // bottom-right: small coffee corner
 set(furniture, 16, 15, 'cabinet_coffee');
 set(furniture, 15, 15, 'plant_small');
 
-// plants in the seams
-set(furniture, 1, 3, 'plant_big');
-set(furniture, 18, 3, 'plant_big');
-set(furniture, 5, 3, 'plant_small');
-set(furniture, 14, 3, 'plant_small');
+// plants in the seams (top plants sit on the wall row, flush against it)
+set(furniture, 1, 2, 'plant_big');
+set(furniture, 18, 2, 'plant_big');
 set(furniture, 1, 15, 'plant_big');
 set(furniture, 18, 15, 'plant_big');
+set(furniture, 4, 15, 'plant_small');
 
 // decor layer kept (empty) for the canonical layer contract; desk items are
 // baked into the desk tiles.
@@ -250,14 +233,14 @@ function buildObjects() {
 
   // Agents face the viewer from BEHIND their desks: the spawn point (feet
   // anchor) sits exactly on the desk block's top edge, so the desk +
-  // laptop cover the lap and the bust stays fully visible.
+  // monitor cover the lap and the seated bust stays fully visible.
   const spawns = [
-    spawnPoint('boss', 320, 224, {
+    spawnPoint('boss', 320, 288, {
       role: 'boss',
       displayName: 'Boss / Orchestrator',
       label: 'Boss',
     }),
-    spawnPoint('analyst', 96, 192, {
+    spawnPoint('analyst', 96, 160, {
       role: 'strategy_analyst',
       displayName: 'Strategy Analyst',
       label: 'Analyst',
@@ -267,12 +250,12 @@ function buildObjects() {
       displayName: 'Researcher',
       label: 'Researcher',
     }),
-    spawnPoint('critic', 96, 384, {
+    spawnPoint('critic', 96, 416, {
       role: 'critic',
       displayName: 'Critic / Risk Reviewer',
       label: 'Critic',
     }),
-    spawnPoint('builder', 544, 192, {
+    spawnPoint('builder', 544, 160, {
       role: 'builder',
       displayName: 'Builder',
       label: 'Builder',
@@ -282,7 +265,7 @@ function buildObjects() {
       displayName: 'Evaluator',
       label: 'Evaluator',
     }),
-    spawnPoint('perf-monitor', 544, 384, {
+    spawnPoint('perf-monitor', 544, 416, {
       role: 'performance_monitor',
       displayName: 'Performance Monitor',
       label: 'Monitor',
@@ -317,9 +300,9 @@ function buildObjects() {
       label: 'Bot Status',
       panelTarget: 'bot-health',
     }),
-    // pure hit-area over the console furniture tiles (no sprite). Height
-    // 40 (tile + leg row) keeps the hover label clear of the Boss chip.
-    interactiveRect('boss-console', 256, 224, 128, 40, {
+    // pure hit-area over the 4×2 console furniture tiles (no sprite); the
+    // hover label lands below the console, clear of the Boss nameplate
+    interactiveRect('boss-console', 256, 288, 128, 64, {
       objectType: 'boss_console',
       label: 'Console',
       panelTarget: 'boss-commands',

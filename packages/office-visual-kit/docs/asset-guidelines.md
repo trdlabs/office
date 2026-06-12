@@ -7,9 +7,9 @@ policy source: `docs/fable-input/02-asset-sources.md` and
 ## Priority order
 
 ```text
-1. Original / generated placeholder pixel assets   ← current state
+1. Original / generated placeholder pixel assets   ← tiles, props, maps
 2. Kenney CC0 environment/furniture assets         ← allowed, not yet used
-3. Optional LPC characters later (attribution!)    ← future path only
+3. LPC characters with attribution                 ← USED for the agents (Iteration 4)
 4. Optional game-icons.net icons (CC-BY)           ← future path only
 ```
 
@@ -21,24 +21,29 @@ directory:
 
 | Script / module | Output |
 | --- | --- |
-| `tools/lib/tiles.mjs` | `tiles/office-tileset-day.png` + `-night.png` — environment/furniture tiles, 32×32 (incl. 2×1 laptop desk blocks, the 4×1 boss console, glass partition, carpets, tech floor) |
-| `tools/lib/agents.mjs` | `agents/agent-<role>.png` — 32×36 front-facing seated busts (Boss: 32×40 in the winged executive chair), 2 idle frames |
+| `tools/lib/tiles.mjs` | `tiles/office-tileset-day.png` + `-night.png` — environment/furniture tiles, 32×32 (incl. 2×1 monitor desk blocks, the 4×2 mahogany boss console, glass partition with square corners + sliding door, tech floor) |
 | `tools/lib/props.mjs` | `props/*.png` — interactive objects, 2 animation frames |
-| `tools/lib/palette.mjs` | the "Retro Pixel AI Research Tower" day palette + `nightify()` + `EMISSIVE` + `ROLE_STYLES` |
+| `tools/lib/palette.mjs` | the "Retro Pixel AI Research Tower" day palette + `nightify()` + `EMISSIVE` |
 
-**Chunky-pixel rule:** all art is drawn on a logical 16-px grid and upscaled
-×2 (`upscale()` in `tools/lib/img.mjs`) onto the 32-px tiles — one art pixel
-is 2×2 real pixels. Large shapes and readable silhouettes beat micro-detail;
-screens carry a single glowing glyph, never a dense fake dashboard (laptop
-lids carry a generic glowing mark — no real-world logos).
+(Agent sprites are NOT generated — they are composed from real LPC layers,
+see section 3.)
 
-**Front-facing workstation rule (Iteration 3):** agents face the viewer.
+**Chunky-pixel rule:** all environment art is drawn on a logical 16-px grid
+and upscaled ×2 (`upscale()` in `tools/lib/img.mjs`) onto the 32-px tiles —
+one art pixel is 2×2 real pixels. Large shapes and readable silhouettes
+beat micro-detail; screens carry a single glowing glyph, never a dense fake
+dashboard (monitor backs carry a generic glowing mark — no real-world
+logos). LPC characters are native 1-px LPC density by design.
+
+**Front-facing workstation rule (Iteration 3/4):** agents face the viewer.
 A character is a seated bust — face with eyes, hair style, outfit, chair
 back peeking at the sides — whose bottom edge is the "desk cut": the sprite
-ends where the desk begins, so the desk + laptop cover the lap. A role must
-read through hair style/color, outfit (suit, blazer, hoodie, shirt+tie,
-tee, turtleneck, vest) and face-level accessories (glasses, cap, headset).
-The Boss is taller, suited, and sits in a winged executive chair.
+ends where the desk begins (spawn point = desk block top edge), so the desk
++ monitor cover the lap. The monitor's screen faces the agent; the viewer
+sees its aluminum back. A role must read through hair style/color, outfit
+and accessories (glasses etc.). The Boss is suited (gold tie) in a winged
+executive chair behind the deep mahogany console. Agents sit still — both
+strip frames are identical, no idle bobbing.
 
 All art is drawn once in the Day Office palette. The night tileset is derived
 automatically: `nightify()` pushes every pixel toward a dark blue cast except
@@ -72,30 +77,35 @@ examples/<floor>/public/assets/third-party/kenney/
 Attribution is not required for CC0, but credit Kenney in `SOURCE.md` for
 transparency.
 
-## 3. LPC characters (optional future path — NOT mandatory)
+## 3. LPC characters (USED for the agents since Iteration 4)
 
-The [Universal LPC Spritesheet Generator](https://liberatedpixelcup.github.io/Universal-LPC-Spritesheet-Character-Generator/)
-can produce richer characters, but LPC assets carry CC-BY-SA / OGA-BY / GPL
-licenses and **require attribution per author**. The kit supports them
-without code changes (an LPC sheet is just another sprite strip — register it
-with the right `frameWidth`/`frameCount`). Note that stock LPC sheets are
-walk cycles (front/side/back standing poses); the example's seated
-behind-the-desk pose needs custom frames (e.g. crop a front-facing LPC bust
-at the desk cut), which is why the example ships LPC-*inspired* original
-characters instead. Real LPC import stays a drop-in path: same strip
-format, same feet/desk-edge anchor. Before committing any real LPC asset:
+The agent sprites are composed from real
+[Universal LPC Spritesheet Character Generator](https://github.com/LiberatedPixelCup/Universal-LPC-Spritesheet-Character-Generator)
+layers by `tools/compose-lpc-agents.mjs` in the example: it loads each
+layer's `sit.png` sheet, recolors it with the generator's own palette
+ramps, composites the layers in the generator's zPos order on the
+south-facing chair-sit frame, draws an original office chair behind the
+figure, and crops the seated bust at the desk cut line. The composed PNGs
+plus the licensing docs are committed under:
 
 ```text
 examples/<floor>/public/assets/third-party/lpc/
-  SOURCE.md         — generator URL + selected parts + download date
-  ATTRIBUTIONS.md   — every author + license, generated by the LPC tool
-  LICENSES.md       — full license texts (CC-BY-SA / OGA-BY / GPL)
+  agent-<role>.png  — 2-frame strip (identical frames), feet/desk-edge anchor
+  SOURCE.md         — generator repo + exact commit + reproduce steps
+  ATTRIBUTIONS.md   — every source file's authors/licenses/URLs, regenerated
+                      from the generator's CREDITS.csv by the composer
+  LICENSES.md       — the sprites are CC-BY-SA 3.0 (chosen from the
+                      upstream multi-license); links to all license texts
 ```
 
-Never label LPC-derived files as generated/CC0; if the attribution chain is
-unclear, do not use the asset.
+LPC assets carry CC-BY-SA / OGA-BY / GPL licenses and **require attribution
+per author** — never label LPC-derived files as generated/CC0; if the
+attribution chain is unclear, do not use the asset. The kit itself needs no
+code changes (an LPC composite is just another sprite strip — register it
+with the right `frameWidth`/`frameCount`).
 
-Keep LPC assets out of the core kit so the default path stays CC0-clean.
+Keep LPC assets out of the core kit so the default path stays CC0-clean —
+they live in the example's `third-party/` tree only.
 
 ## Forbidden
 

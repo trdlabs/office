@@ -97,6 +97,12 @@ export interface AgentSceneConfig {
   /** Asset key override; defaults to `agent:<role>`. */
   sprite?: string;
   showLabel?: boolean;
+  /**
+   * Per-agent override of `theme.agentLabelOffsetY` — e.g. an agent behind
+   * a deeper desk (the boss console) needs its nameplate pushed further
+   * down to land on the desk's front face.
+   */
+  labelOffsetY?: number;
 }
 
 export interface ObjectSceneConfig {

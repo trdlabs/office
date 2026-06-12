@@ -91,6 +91,7 @@ export function resolveSceneEntities(
       label: agentConfig.label ?? agentConfig.displayName,
       status: agentConfig.initialStatus ?? 'idle',
       position: { x: spawn.x, y: spawn.y },
+      labelOffsetY: agentConfig.labelOffsetY,
       mapObjectName: spawnName,
       properties: { ...spawn.properties },
     });

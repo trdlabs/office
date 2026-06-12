@@ -92,6 +92,8 @@ export interface AgentEntity {
   status: AgentStatus;
   /** World position of the agent's feet (anchor 0.5/1.0). */
   position: ScenePoint;
+  /** Per-agent override of `theme.agentLabelOffsetY` (deeper desks). */
+  labelOffsetY?: number;
   /** Name of the Tiled spawn-point object this agent was bound to. */
   mapObjectName?: string;
   properties: EntityProperties;
