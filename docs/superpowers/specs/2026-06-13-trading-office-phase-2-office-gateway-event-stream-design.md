@@ -145,8 +145,11 @@ This keeps Phase 2 from becoming a backend / auth / Postgres / realtime rewrite.
 ### Server runtime / WS adapter (soft-locked)
 
 **Locked:** Hono as the server runtime; exactly **one** WebSocket endpoint.
-**Proposed, resolved during implementation planning:** the concrete Node WS
-adapter (candidate `@hono/node-ws`), chosen by compatibility check at plan time.
+**Proposed, resolved by a short compatibility spike before the server WS tasks:**
+the concrete Node WS adapter (candidate `@hono/node-ws`). If it does not fit
+cleanly, swap the Node WS wiring (e.g. a `ws` server attached to the Node HTTP
+server) **without any contract change** — the `OfficeEvent` schema and the
+`WS /api/office/events` path are fixed.
 
 ## 2. Shared contract — `packages/office-gateway`
 
@@ -407,7 +410,8 @@ implementation.
 
 - reduces **only** floor-shell state: `agent_statuses_snapshot` → set all;
   `agent_status_changed` → set one (→ `applyStatusToScene`, downstream seam
-  unchanged). A connection-status field may be added later if needed.
+  unchanged). It also holds one **shell-level** field — the connection status (see
+  *No silent fallback*) — runtime / transport state, not domain data.
 - does **not** absorb traces or operator lifecycle (would become a god-object).
   `operator_message_*` and `agent_trace_appended` stay **panel-local** streams,
   consumed via the same `subscribeOfficeEvents` (one WS → many client
@@ -415,22 +419,30 @@ implementation.
 - wiring: one bootstrap effect `gateway.subscribeOfficeEvents(e => store.reduce(e))`;
   the topbar "simulate activity" toggle drives the mock producer in mock mode.
 
-### `OperatorChatPanel` (the only panel that changes)
+### `OperatorChatPanel` (new global shell surface)
 
 `BossCommandPanel` → `OperatorChatPanel` (component + contract name). UI title may
 read `Orchestrator` or `Operator chat · Orchestrator`.
 
-- input → `sendOperatorMessage({ text, source: 'web', target: 'orchestrator', floorId: 'trading-lab' })`
-  → operator bubble + "accepted";
-- subscribes to `operator_message_*` filtered by `conversationId`: `progress` →
-  status, `delta` → append into a streaming reply bubble, `completed` → finalize
-  `OperatorReply`, `failed` → error;
-- keeps a visible **`no execution authority`** badge (+ a mock/connected mode
-  indicator).
+**It is a global shell surface, not a floor-entity panel.** Clicking any agent —
+**including the boss / orchestrator** — opens `AgentActivityPanel` (activity /
+logs / traces), so the floor-interaction model stays uniform. `OperatorChatPanel`
+is opened from a **global shell control** (a floor-level `Operator` button) via a
+dedicated `/operator` route, never from a floor entity. `OperatorMessage.target`
+stays `'orchestrator'`; the floor SSOT is untouched.
+
+- submit → optimistic operator bubble; `POST` → `accepted`
+  (`{ operatorMessageId, conversationId }`);
+- subscribes to `operator_message_*` filtered by `conversationId`: `delta` →
+  append into a streaming reply bubble, `completed` → finalize `OperatorReply`,
+  `failed` → error;
+- **a failed HTTP submit marks that turn `failed`** (a `submit_failed` action) so a
+  turn is never left stuck `pending` — part of honest connected-mode behavior;
+- keeps a visible **`no execution authority`** badge.
 
 The other six panels are unchanged — still `useResource(() => gateway.getX(), [])`.
-`panelRegistry` maps the floor's `boss` agent role → `OperatorChatPanel` (no floor
-SSOT change).
+`panelRegistry` routes the boss like any agent (`agent-activity`); the
+`operator-chat` panel kind is produced only by the `/operator` shell route.
 
 ### No silent fallback (explicit)
 
@@ -444,6 +456,16 @@ connection error / warning**. It is **not allowed** to:
 Reconnect is **simple and bounded** — no offline queue, no replay, no complex
 delivery semantics. A connection warning surfaces the problem instead of masking
 it.
+
+**Connection state path (so the warning is real, not just "no fallback").**
+`OfficeRuntimeStore` holds one shell-level field beyond statuses — the connection
+status `'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'error'`
+(runtime / transport state, **not** domain data; traces and operator transcript
+stay panel-local). `HttpOfficeGateway` signals connection changes via
+`subscribeConnection`; `RuntimeContext` wires that into the store in connected
+mode (mock mode stays `'connected'`). `FloorScreen` renders a warning banner when
+the connection is degraded. Tests assert the **warning state actually arises**,
+not merely that no fallback happens.
 
 ## 6. No-execution-authority guarantees (consolidated)
 
@@ -508,11 +530,12 @@ proves the new wire / WS path.
    #11.)
 7. `OfficeRuntimeStore` reducer: snapshot / changed events → correct status map;
    non-status events ignored.
-8. `OperatorChatPanel` pure reducer: a sequence of `operator_message_*` events →
-   correct transcript state (accepted → progress → delta → completed / failed).
+8. `OperatorChatPanel` pure reducer: `submit → accepted → delta → completed / failed`,
+   **including a failed HTTP submit marking the turn failed** (`submit_failed`).
 9. `panelRegistry`: `boss` role → `OperatorChatPanel`.
-10. **No-silent-fallback**: connected + unavailable server → error / connection
-    warning, never mock.
+10. **No-silent-fallback + connection state**: connected + unavailable server →
+    the gateway signals a degraded connection and a **visible warning state
+    arises** in the store (asserted), never a fall back to mock.
 11. **WS endpoint test** (separate from `app.fetch`, against an ephemeral local
     server or the chosen WS adapter's harness; `app.fetch` is **not** treated as
     WS coverage): connect → receive initial `agent_statuses_snapshot` → receive a

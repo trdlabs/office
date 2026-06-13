@@ -66,20 +66,21 @@ apps/web/                                CHANGED
   src/runtime/OfficeGateway.ts           re-export OfficeGateway from the contract
   src/runtime/MockOfficeGateway.ts       implement new contract over office-fixtures
   src/runtime/MockOfficeGateway.test.ts  updated for sendOperatorMessage / subscribeOfficeEvents
-  src/runtime/HttpOfficeGateway.ts       NEW — HTTP reads + one WS; injectable fetchImpl/wsFactory
-  src/runtime/HttpOfficeGateway.test.ts  NEW — reads, non-2xx throw, WS fan-out, no-silent-fallback
-  src/runtime/OfficeRuntimeStore.ts      + reduce(event) (status events only)
-  src/runtime/OfficeRuntimeStore.test.ts NEW — reducer
-  src/runtime/RuntimeContext.tsx         createGateway() Vite-env mode switch
+  src/runtime/HttpOfficeGateway.ts       NEW — HTTP reads + one WS + connection signaling; injectable fetchImpl/wsFactory
+  src/runtime/HttpOfficeGateway.test.ts  NEW — reads, non-2xx throw, WS fan-out, connection state
+  src/runtime/OfficeRuntimeStore.ts      + reduce(event) (statuses) + shell connection state
+  src/runtime/OfficeRuntimeStore.test.ts NEW — reducer + connection
+  src/runtime/RuntimeContext.tsx         createGateway() Vite-env mode switch + connection wiring + useConnectionStatus
   src/runtime/conformance.test.ts        NEW — mock == connected snapshots (in-process Hono)
   src/runtime/importBoundary.test.ts     NEW — production import-boundary guard
   src/floor/panels/operatorTranscript.ts NEW — pure transcript reducer
   src/floor/panels/operatorTranscript.test.ts NEW
   src/floor/panels/OperatorChatPanel.tsx NEW (replaces BossCommandPanel.tsx)
-  src/floor/panelRegistry.ts             'boss-command' → 'operator-chat'
-  src/floor/panelRegistry.test.ts        updated
-  src/floor/PanelDock.tsx                render OperatorChatPanel
-  src/floor/FloorScreen.tsx              subscribeOfficeEvents + store.reduce; office-fixtures import
+  src/floor/floorSelection.ts            + operator?: boolean (the /operator shell route)
+  src/floor/panelRegistry.ts             boss → agent-activity; operator-chat only from /operator route
+  src/floor/panelRegistry.test.ts        updated (boss → activity; operator via shell route)
+  src/floor/PanelDock.tsx                render OperatorChatPanel (kind from the shell route)
+  src/floor/FloorScreen.tsx              office events → store.reduce; Operator button + /operator route; connection banner
 
 root + tooling                           CHANGED
   package.json                           + scripts dev:server / dev:web:connected / dev:connected; test --workspaces; + devDep concurrently
@@ -1314,6 +1315,41 @@ git add apps/server/src/guard apps/server/src/operator
 git commit -m "feat(server): no-execution-authority guard + inert operator responder"
 ```
 
+### Task C5.5: WS adapter compatibility spike (before the WS route)
+
+A short spike to confirm the chosen Node WS adapter before building on it. The
+contract is fixed regardless: if `@hono/node-ws` does not fit cleanly, swap the
+Node WS wiring (e.g. a `ws.Server` attached to the `@hono/node-server` HTTP
+server in `index.ts`) **without any change** to the `OfficeEvent` schema or the
+`WS /api/office/events` path.
+
+- [ ] **Step 1: Spike `@hono/node-ws`** — add a throwaway `apps/server/src/ws.spike.ts`:
+
+```ts
+import { serve } from '@hono/node-server';
+import { createNodeWebSocket } from '@hono/node-ws';
+import { Hono } from 'hono';
+
+const app = new Hono();
+const { upgradeWebSocket, injectWebSocket } = createNodeWebSocket({ app });
+app.get('/ws', upgradeWebSocket(() => ({
+  onOpen(_e, ws) { ws.send('hello'); },
+  onMessage(evt, ws) { ws.send(`echo:${String(evt.data)}`); },
+})));
+const server = serve({ fetch: app.fetch, port: 8799 }, () => console.log('spike on :8799'));
+injectWebSocket(server);
+```
+
+Run: `npx tsx apps/server/src/ws.spike.ts`, then from another shell connect (e.g. `npx wscat -c ws://localhost:8799/ws`). Confirm you receive `hello` on connect and `echo:<msg>` on send.
+
+- [ ] **Step 2: Decide.** If it works, keep `@hono/node-ws` (the plan's default, used by Task C6). If not, switch `index.ts`/`app.ts` to a `ws.Server` attached to the Node HTTP server — the routes, contract, and `OfficeEvent` shapes do not change.
+
+- [ ] **Step 3: Clean up**
+
+```bash
+rm -f apps/server/src/ws.spike.ts
+```
+
 ### Task C6: `createOfficeApp` — HTTP routes + operator POST + WS route + CORS
 
 **Files:**
@@ -1733,6 +1769,13 @@ describe('transcriptReducer', () => {
     expect(s.turns[0]!.status).toBe('failed');
     expect(s.turns[0]!.error).toBe('boom');
   });
+
+  it('marks a turn failed when the HTTP submit itself fails', () => {
+    let s = transcriptReducer(emptyTranscript, { kind: 'submit', localId: 'L1', text: 'x' });
+    s = transcriptReducer(s, { kind: 'submit_failed', localId: 'L1', error: 'server unavailable' });
+    expect(s.turns[0]!.status).toBe('failed');
+    expect(s.turns[0]!.error).toBe('server unavailable');
+  });
 });
 ```
 
@@ -1765,6 +1808,7 @@ export const emptyTranscript: OperatorTranscriptState = { turns: [] };
 export type TranscriptAction =
   | { kind: 'submit'; localId: string; text: string }
   | { kind: 'accepted'; localId: string; operatorMessageId: string; conversationId: string }
+  | { kind: 'submit_failed'; localId: string; error: string }
   | { kind: 'event'; event: OfficeEvent };
 
 function mapById(
@@ -1791,6 +1835,12 @@ export function transcriptReducer(state: OperatorTranscriptState, action: Transc
           t.localId === action.localId
             ? { ...t, operatorMessageId: action.operatorMessageId, conversationId: action.conversationId, status: 'streaming' }
             : t,
+        ),
+      };
+    case 'submit_failed':
+      return {
+        turns: state.turns.map((t) =>
+          t.localId === action.localId ? { ...t, status: 'failed', error: action.error } : t,
         ),
       };
     case 'event': {
@@ -2039,6 +2089,7 @@ This single task rewires the app onto the new contract and ends green. Do all ed
 - Create: `apps/web/src/env.d.ts`
 - Create: `apps/web/src/floor/panels/OperatorChatPanel.tsx`
 - Delete: `apps/web/src/floor/panels/BossCommandPanel.tsx`
+- Modify: `apps/web/src/floor/floorSelection.ts` (+ `operator?` shell route)
 - Modify: `apps/web/src/floor/panelRegistry.ts`
 - Modify: `apps/web/src/floor/panelRegistry.test.ts`
 - Modify: `apps/web/src/floor/PanelDock.tsx`
@@ -2272,6 +2323,8 @@ export function OperatorChatPanel({ onClose }: { onClose: () => void }) {
     try {
       const accepted = await gateway.sendOperatorMessage({ text: trimmed, source: 'web', target: 'orchestrator', floorId: 'trading-lab' });
       dispatch({ kind: 'accepted', localId, operatorMessageId: accepted.operatorMessageId, conversationId: accepted.conversationId });
+    } catch (err) {
+      dispatch({ kind: 'submit_failed', localId, error: err instanceof Error ? err.message : 'send failed' });
     } finally {
       setPending(false);
     }
@@ -2309,28 +2362,142 @@ export function OperatorChatPanel({ onClose }: { onClose: () => void }) {
 git rm apps/web/src/floor/panels/BossCommandPanel.tsx
 ```
 
-- [ ] **Step 10: Update `apps/web/src/floor/panelRegistry.ts`** — three edits:
+- [ ] **Step 10: Add the `/operator` shell route (`floorSelection.ts`) and rewrite `panelRegistry.ts`** (boss routes like any agent; `operator-chat` comes only from the `/operator` route)
 
-In `PanelKind`, change `| { kind: 'boss-command' }` to `| { kind: 'operator-chat' }`.
-
-In `resolvePanel`, change `if (agent.role === 'boss') return { kind: 'boss-command' };` to `if (agent.role === 'boss') return { kind: 'operator-chat' };`.
-
-In `selectedEntityId`, change `case 'boss-command':` to `case 'operator-chat':` (it still returns `'boss'` — the floor entity id is unchanged).
-
-In `opensDock`, change `kind.kind === 'boss-command' ||` to `kind.kind === 'operator-chat' ||`.
-
-- [ ] **Step 11: Update `apps/web/src/floor/panelRegistry.test.ts`** — replace both `'boss-command'` occurrences with `'operator-chat'`:
-
+Replace `apps/web/src/floor/floorSelection.ts` with:
 ```ts
-  it('routes the boss to the operator chat panel', () => {
-    expect(resolvePanel({ agentId: 'boss' }, agents)).toEqual({ kind: 'operator-chat' });
-  });
+export interface RouteSelection {
+  agentId?: string;
+  panelTarget?: string;
+  operator?: boolean;
+}
+
+/** Stable string key for effect deps. */
+export function selectionKey(sel: RouteSelection): string {
+  return `${sel.agentId ?? ''}|${sel.panelTarget ?? ''}|${sel.operator ? 'op' : ''}`;
+}
 ```
-and
+
+Replace `apps/web/src/floor/panelRegistry.ts` with:
 ```ts
-  it('selects the boss agent', () => {
-    expect(selectedEntityId({ kind: 'operator-chat' }, targetToObject)).toBe('boss');
+import type { RouteSelection } from './floorSelection';
+import { OBJECT_PANEL_TARGETS, type ObjectPanelTarget } from './objectPanels';
+
+export interface FloorAgentInfo {
+  id: string;
+  role: string;
+}
+
+export type PanelKind =
+  | { kind: 'operator-chat' }
+  | { kind: 'agent-activity'; agentId: string }
+  | { kind: 'object'; panelTarget: ObjectPanelTarget }
+  | { kind: 'exit' }
+  | { kind: 'none' }
+  | { kind: 'unknown'; key: string };
+
+const KNOWN_OBJECT_PANELS = new Set<string>(OBJECT_PANEL_TARGETS);
+
+export function resolvePanel(sel: RouteSelection, agents: FloorAgentInfo[]): PanelKind {
+  if (sel.operator) return { kind: 'operator-chat' }; // global shell surface — not a floor entity
+  if (sel.agentId) {
+    const agent = agents.find((a) => a.id === sel.agentId);
+    if (!agent) return { kind: 'unknown', key: `agent:${sel.agentId}` };
+    return { kind: 'agent-activity', agentId: agent.id }; // boss included — no special case
+  }
+  if (sel.panelTarget) {
+    if (sel.panelTarget === 'exit') return { kind: 'exit' };
+    if (KNOWN_OBJECT_PANELS.has(sel.panelTarget)) {
+      return { kind: 'object', panelTarget: sel.panelTarget as ObjectPanelTarget };
+    }
+    return { kind: 'unknown', key: `panel:${sel.panelTarget}` };
+  }
+  return { kind: 'none' };
+}
+
+/** The entity the scene should select/focus for a given panel (null = clear). */
+export function selectedEntityId(
+  kind: PanelKind,
+  panelTargetToObjectId: Record<string, string>,
+): string | null {
+  switch (kind.kind) {
+    case 'agent-activity':
+      return kind.agentId;
+    case 'object':
+      return panelTargetToObjectId[kind.panelTarget] ?? null;
+    case 'operator-chat': // global surface — selects no floor entity
+      return null;
+    default:
+      return null;
+  }
+}
+
+/** Panel kinds that occupy the right dock (exit/none never open the dock). */
+export function opensDock(kind: PanelKind): boolean {
+  return (
+    kind.kind === 'operator-chat' ||
+    kind.kind === 'agent-activity' ||
+    kind.kind === 'object' ||
+    kind.kind === 'unknown'
+  );
+}
+```
+
+- [ ] **Step 11: Replace `apps/web/src/floor/panelRegistry.test.ts`**
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { resolvePanel, selectedEntityId, type FloorAgentInfo } from './panelRegistry';
+
+const agents: FloorAgentInfo[] = [
+  { id: 'boss', role: 'boss' },
+  { id: 'researcher', role: 'researcher' },
+];
+const targetToObject = { 'backtest-summary': 'wall-monitor', 'infra-status': 'server-rack' };
+
+describe('resolvePanel', () => {
+  it('routes the boss to the activity panel like any other agent', () => {
+    expect(resolvePanel({ agentId: 'boss' }, agents)).toEqual({ kind: 'agent-activity', agentId: 'boss' });
   });
+  it('routes other agents to the activity panel', () => {
+    expect(resolvePanel({ agentId: 'researcher' }, agents)).toEqual({ kind: 'agent-activity', agentId: 'researcher' });
+  });
+  it('opens the operator chat from the /operator shell route (not a floor entity)', () => {
+    expect(resolvePanel({ operator: true }, agents)).toEqual({ kind: 'operator-chat' });
+  });
+  it('flags unknown agents', () => {
+    expect(resolvePanel({ agentId: 'ghost' }, agents)).toEqual({ kind: 'unknown', key: 'agent:ghost' });
+  });
+  it('routes known object targets', () => {
+    expect(resolvePanel({ panelTarget: 'backtest-summary' }, agents)).toEqual({ kind: 'object', panelTarget: 'backtest-summary' });
+  });
+  it('routes exit specially', () => {
+    expect(resolvePanel({ panelTarget: 'exit' }, agents)).toEqual({ kind: 'exit' });
+  });
+  it('flags unknown object targets', () => {
+    expect(resolvePanel({ panelTarget: 'nope' }, agents)).toEqual({ kind: 'unknown', key: 'panel:nope' });
+  });
+  it('returns none with no selection', () => {
+    expect(resolvePanel({}, agents)).toEqual({ kind: 'none' });
+  });
+});
+
+describe('selectedEntityId', () => {
+  it('selects no floor entity for the operator chat', () => {
+    expect(selectedEntityId({ kind: 'operator-chat' }, targetToObject)).toBeNull();
+  });
+  it('selects an agent', () => {
+    expect(selectedEntityId({ kind: 'agent-activity', agentId: 'researcher' }, targetToObject)).toBe('researcher');
+  });
+  it('maps an object panel target to its entity id', () => {
+    expect(selectedEntityId({ kind: 'object', panelTarget: 'infra-status' }, targetToObject)).toBe('server-rack');
+  });
+  it('selects nothing for exit / none / unknown', () => {
+    expect(selectedEntityId({ kind: 'exit' }, targetToObject)).toBeNull();
+    expect(selectedEntityId({ kind: 'none' }, targetToObject)).toBeNull();
+    expect(selectedEntityId({ kind: 'unknown', key: 'x' }, targetToObject)).toBeNull();
+  });
+});
 ```
 
 - [ ] **Step 12: Update `apps/web/src/floor/PanelDock.tsx`** — three edits:
@@ -2350,11 +2517,21 @@ to:
 
 In `panelContentKey`, change `case 'boss-command': return 'boss';` to `case 'operator-chat': return 'operator';`.
 
-- [ ] **Step 13: Update `apps/web/src/floor/FloorScreen.tsx`** — two edits.
+- [ ] **Step 13: Update `apps/web/src/floor/FloorScreen.tsx`** — four edits.
 
-Change the import `import { INITIAL_STATUSES } from '../runtime/fixtures';` to `import { INITIAL_STATUSES } from '@trading-office/office-fixtures';`.
+(a) Change the import `import { INITIAL_STATUSES } from '../runtime/fixtures';` to `import { INITIAL_STATUSES } from '@trading-office/office-fixtures';`.
 
-Change the status-simulation effect from:
+(b) Add an `/operator` route match alongside the existing matches and include it in `sel` (replace the existing `const sel: RouteSelection = { agentId: ..., panelTarget: ... };`):
+```ts
+  const operatorMatch = useMatch(`${FLOOR_BASE_PATH}/operator`);
+  const sel: RouteSelection = {
+    agentId: agentMatch?.params.agentId,
+    panelTarget: panelMatch?.params.panelTarget,
+    operator: !!operatorMatch,
+  };
+```
+
+(c) Change the status-event effect body from:
 ```ts
     if (!gateway.subscribeAgentStatuses) return;
     const off = gateway.subscribeAgentStatuses((statuses) => store.setStatuses(statuses));
@@ -2367,6 +2544,18 @@ to:
     return off;
 ```
 
+(d) Add the global `Operator` shell control (a floating button) inside the returned `<div className="floor">`, just before `<PanelDock ... />`. **This button — not any floor agent — is what opens `OperatorChatPanel`:**
+```tsx
+      <button
+        type="button"
+        className="floor__operator-btn"
+        aria-pressed={!!operatorMatch}
+        onClick={() => navigate(operatorMatch ? FLOOR_BASE_PATH : `${FLOOR_BASE_PATH}/operator`)}
+      >
+        Operator
+      </button>
+```
+
 - [ ] **Step 14: Typecheck + run the whole web suite**
 
 Run: `npm run typecheck -w @trading-office/web && npm run test -w @trading-office/web`
@@ -2377,6 +2566,164 @@ Expected: no type errors; all web tests pass (existing + new). If `OfficeEvent` 
 ```bash
 git add apps/web/src
 git commit -m "feat(web): flip to office-gateway contract — operator chat panel + mode switch + event-driven floor"
+```
+
+### Task D6: Connection state + warning banner (honest connected mode)
+
+`OfficeRuntimeStore` gains one shell-level field (the connection status);
+`HttpOfficeGateway` signals connection changes; `FloorScreen` shows a banner when
+degraded. This makes "no silent fallback" *visible*, not just logical.
+
+**Files:**
+- Modify: `apps/web/src/runtime/OfficeRuntimeStore.ts` (+ connection state)
+- Modify: `apps/web/src/runtime/OfficeRuntimeStore.test.ts` (+ connection test)
+- Modify: `apps/web/src/runtime/HttpOfficeGateway.ts` (+ subscribeConnection + transitions)
+- Modify: `apps/web/src/runtime/HttpOfficeGateway.test.ts` (+ connection test)
+- Modify: `apps/web/src/runtime/RuntimeContext.tsx` (wire connection; `useConnectionStatus`)
+- Modify: `apps/web/src/floor/FloorScreen.tsx` (warning banner)
+
+- [ ] **Step 1: Extend `OfficeRuntimeStore`.** Change the top of `OfficeRuntimeStore.ts`:
+```ts
+import type { AgentStatus, AgentStatusMap, OfficeEvent } from './types';
+
+export type ConnectionStatus = 'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'error';
+
+export interface RuntimeState {
+  statuses: AgentStatusMap;
+  connection: ConnectionStatus;
+}
+```
+Change the initial state to `private state: RuntimeState = { statuses: {}, connection: 'connected' };`. Update `setStatus` / `setStatuses` so they preserve `connection` (spread the whole state, e.g. `this.state = { ...this.state, statuses: { ...this.state.statuses, [agentId]: status } };` and `this.state = { ...this.state, statuses: { ...statuses } };`). Add the setter:
+```ts
+  setConnection(connection: ConnectionStatus): void {
+    if (this.state.connection === connection) return;
+    this.state = { ...this.state, connection };
+    this.emit();
+  }
+```
+
+- [ ] **Step 2: Add the store connection test** to `OfficeRuntimeStore.test.ts`:
+```ts
+  it('tracks shell connection state without touching statuses', () => {
+    const store = new OfficeRuntimeStore();
+    store.reduce({ type: 'agent_statuses_snapshot', ts: '1', statuses: { boss: 'thinking' } });
+    expect(store.getSnapshot().connection).toBe('connected');
+    store.setConnection('reconnecting');
+    expect(store.getSnapshot().connection).toBe('reconnecting');
+    expect(store.getSnapshot().statuses).toEqual({ boss: 'thinking' });
+  });
+```
+
+- [ ] **Step 3: Add connection signaling to `HttpOfficeGateway`.** Add the import at the top:
+```ts
+import type { ConnectionStatus } from './OfficeRuntimeStore';
+```
+Add these members + methods to the class:
+```ts
+  private connectionStatus: ConnectionStatus = 'connected';
+  private readonly connectionSubs = new Set<(s: ConnectionStatus) => void>();
+
+  subscribeConnection(cb: (s: ConnectionStatus) => void): () => void {
+    this.connectionSubs.add(cb);
+    cb(this.connectionStatus);
+    return () => { this.connectionSubs.delete(cb); };
+  }
+
+  private setConnection(s: ConnectionStatus): void {
+    if (this.connectionStatus === s) return;
+    this.connectionStatus = s;
+    for (const cb of this.connectionSubs) cb(s);
+  }
+```
+Wire transitions:
+- in `connect()`, as the first line: `this.setConnection('connecting');`
+- in the `open` listener body, add: `this.setConnection('connected');`
+- in the `close` listener body, before `this.scheduleReconnect();`, add: `this.setConnection(this.attempts >= MAX_RECONNECT_ATTEMPTS ? 'disconnected' : 'reconnecting');`
+- in `get()`, in the `!res.ok` branch before `throw`, add: `this.setConnection('error');`; on success (just before `return`), add: `if (!this.ws) this.setConnection('connected');`
+
+- [ ] **Step 4: Extend the `FakeWs` test helper** in `HttpOfficeGateway.test.ts` with two methods, and add a connection test:
+```ts
+  // add inside class FakeWs:
+  open() { (this.listeners['open'] ?? []).forEach((f) => f({})); }
+  drop() { (this.listeners['close'] ?? []).forEach((f) => f({})); }
+```
+```ts
+  it('signals connection state across the WS lifecycle', () => {
+    const sockets: FakeWs[] = [];
+    const gw = new HttpOfficeGateway({
+      baseUrl: 'http://x',
+      fetchImpl: async () => jsonResponse(null),
+      wsFactory: (url) => { const s = new FakeWs(url); sockets.push(s); return s; },
+    });
+    const seen: string[] = [];
+    gw.subscribeConnection((s) => seen.push(s));
+    const off = gw.subscribeOfficeEvents!(() => {});
+    expect(seen).toContain('connecting');
+    sockets[0]!.open();
+    expect(seen).toContain('connected');
+    sockets[0]!.drop();
+    expect(seen.some((s) => s === 'reconnecting' || s === 'disconnected')).toBe(true);
+    off();
+  });
+```
+
+- [ ] **Step 5: Wire connection into the store + expose a hook** in `RuntimeContext.tsx`. Add imports + a type guard above `RuntimeProvider`:
+```ts
+import { useEffect } from 'react';
+import type { ConnectionStatus } from './OfficeRuntimeStore';
+
+interface ConnectionSignaling {
+  subscribeConnection(cb: (s: ConnectionStatus) => void): () => void;
+}
+function isConnectionSignaling(g: unknown): g is ConnectionSignaling {
+  return typeof (g as { subscribeConnection?: unknown }).subscribeConnection === 'function';
+}
+```
+Inside `RuntimeProvider`, after `value` is memoized, add:
+```ts
+  useEffect(() => {
+    if (isConnectionSignaling(value.gateway)) {
+      return value.gateway.subscribeConnection((s) => value.store.setConnection(s));
+    }
+    value.store.setConnection('connected'); // mock mode: always connected
+  }, [value]);
+```
+Add the hook (next to the other hooks):
+```ts
+export function useConnectionStatus(): ConnectionStatus {
+  const { store } = useRuntime();
+  return useSyncExternalStore(store.subscribe, () => store.getSnapshot().connection);
+}
+```
+
+- [ ] **Step 6: Show the warning banner in `FloorScreen.tsx`.** Add to the imports:
+```ts
+import { useConnectionStatus } from '../runtime/RuntimeContext';
+```
+Inside the component, derive a degraded flag:
+```ts
+  const connection = useConnectionStatus();
+  const degraded = connection === 'reconnecting' || connection === 'disconnected' || connection === 'error';
+```
+In the returned JSX (e.g. just above `<PanelDock ... />`):
+```tsx
+      {degraded && (
+        <div className="floor__conn-warning" role="alert">
+          Connection {connection} — live data may be stale. (No fallback to mock.)
+        </div>
+      )}
+```
+
+- [ ] **Step 7: Typecheck + test**
+
+Run: `npm run typecheck -w @trading-office/web && npm run test -w @trading-office/web`
+Expected: PASS, no type errors.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add apps/web/src
+git commit -m "feat(web): shell connection state + degraded-connection warning banner"
 ```
 
 ---
@@ -2701,10 +3048,10 @@ Expected: still green. Phase 2 is done.
 | §2 | contract (DTO, operator model, routes, OfficeEvent, error, zod) | A1–A3 |
 | §3 | shared fixtures | B1–B2 |
 | §4 | server: read-only port, fixture connector, inert operator path, bus, producer, guard, WS | C2–C7 |
-| §5 | client: HttpOfficeGateway, evolved mock, narrow store reducer, OperatorChatPanel, mode switch, no silent fallback | D2–D5 |
+| §5 | client: HttpOfficeGateway, evolved mock, narrow store reducer + connection state, OperatorChatPanel (shell surface), mode switch, no-silent-fallback + warning | D2–D6 |
 | §6 | no-execution-authority (consolidated) | C5 (guard) + C6 (inert route test) + D4 (no-fallback) |
 | §7 | env / dev scripts | E3 |
-| §8 | tests #1–#12 | #1/#2/#3 A2–A3,B2,E4 · #4/#5 C6,C5 · #6 E1 · #7 D2 · #8 D3 · #9 D5 · #10 D4 · #11 C7 · #12 E2 |
+| §8 | tests #1–#12 | #1/#2/#3 A2–A3,B2,E4 · #4/#5 C6,C5 · #6 E1 · #7 D2 · #8 D3 · #9 D5 · #10 D4+D6 · #11 C7 · #12 E2 |
 | §9 | out of scope | respected throughout (no real data/LLM/exec/platform/auth/Postgres/Redis) |
 | §10 | Phase 3 hooks (documentation) | already in the committed **spec** (§10); the port's doc comment in C4 points to it — no code produced here by design |
 | §11 | build order | Task Groups A→B→C→D→E mirror it |
