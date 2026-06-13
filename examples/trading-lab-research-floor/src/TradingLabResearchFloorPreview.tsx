@@ -10,7 +10,7 @@ import {
   createTradingLabResearchFloorScene,
   FLOOR_THEMES,
   type FloorThemeName,
-} from './scene/tradingLabResearchFloor.scene';
+} from '@trading-office/trading-lab-floor';
 
 /**
  * Preview shell for the Trading Lab Research Floor. The React layer is a thin

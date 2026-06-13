@@ -1,0 +1,29 @@
+{
+  "name": "@trading-office/trading-lab-floor",
+  "version": "0.1.0",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "description": "Trading Lab Research Floor — shared scene config + maps + assets + generators (single source of truth)",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "files": ["src", "public", "tools"],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit",
+    "generate": "node tools/generate-assets.mjs && node tools/generate-map.mjs",
+    "generate:assets": "node tools/generate-assets.mjs",
+    "generate:map": "node tools/generate-map.mjs",
+    "compose:lpc": "node tools/compose-lpc-agents.mjs"
+  },
+  "dependencies": {
+    "@trading-office/office-visual-kit": "*"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
+}

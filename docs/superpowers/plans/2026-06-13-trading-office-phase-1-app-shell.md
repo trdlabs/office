@@ -216,10 +216,11 @@ git commit -m "refactor(floor): move scene+tools+assets into trading-lab-floor p
  *   node tools/sync-floor-public.mjs <consumer-public-dir>
  *   node tools/sync-floor-public.mjs <consumer-public-dir> --check
  *
- * --check exits non-zero if any synced file is missing or differs from the
- * canonical source (CI / prebuild drift guard).
+ * --check exits non-zero if any synced file is missing, differs from, or is a
+ * stale extra not present in the canonical source (CI / prebuild drift guard).
+ * A missing canonical source dir is always an error (never a silent skip).
  */
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -243,28 +244,52 @@ function* walk(dir) {
   }
 }
 
-let drift = 0;
+let problems = 0;
 for (const sub of SYNCED) {
   const src = join(sourceRoot, sub);
-  if (!existsSync(src)) continue;
+  const dst = join(targetRoot, sub);
+
+  // A missing canonical source dir is a setup error, never a silent skip.
+  if (!existsSync(src)) {
+    console.error(`missing canonical source dir: packages/trading-lab-floor/public/${sub}`);
+    problems++;
+    continue;
+  }
+
   if (check) {
+    // source → target: every canonical file must exist and match byte-for-byte.
     for (const srcFile of walk(src)) {
       const rel = relative(sourceRoot, srcFile);
       const dstFile = join(targetRoot, rel);
       if (!existsSync(dstFile) || !readFileSync(srcFile).equals(readFileSync(dstFile))) {
-        console.error(`drift: ${rel}`);
-        drift++;
+        console.error(`drift (missing/different): ${rel}`);
+        problems++;
+      }
+    }
+    // target → source: no stale extras allowed in the synced dir.
+    if (existsSync(dst)) {
+      for (const dstFile of walk(dst)) {
+        const rel = relative(targetRoot, dstFile);
+        if (!existsSync(join(sourceRoot, rel))) {
+          console.error(`drift (extra in target): ${rel}`);
+          problems++;
+        }
       }
     }
   } else {
-    const dst = join(targetRoot, sub);
+    // Strict mirror: wipe the target subdir first so deletions propagate.
+    rmSync(dst, { recursive: true, force: true });
     mkdirSync(dirname(dst), { recursive: true });
     cpSync(src, dst, { recursive: true });
   }
 }
 
-if (check && drift > 0) {
-  console.error(`floor assets out of sync (${drift} file(s)). Run the predev/prebuild sync.`);
+if (problems > 0) {
+  console.error(
+    check
+      ? `floor assets out of sync (${problems} problem(s)). Run the predev/prebuild sync.`
+      : `cannot sync: ${problems} missing canonical source dir(s).`,
+  );
   process.exit(1);
 }
 console.log(check ? 'floor assets in sync ✓' : `synced floor assets → ${targetPublicArg}`);
@@ -1126,10 +1151,11 @@ git commit -m "feat(web): router, session guard, AppShell topbar, base styles"
 - [ ] **Step 1: Create `apps/web/src/runtime/types.ts`**
 
 ```ts
-export type AgentStatus =
-  | 'idle' | 'thinking' | 'running' | 'waiting' | 'reviewing'
-  | 'backtesting' | 'success' | 'failed' | 'blocked';
+// Single source of truth for the status union lives in the kit; re-export it
+// here so panels/store/gateway share exactly what scene.setAgentStatus expects.
+import type { AgentStatus } from '@trading-office/office-visual-kit';
 
+export type { AgentStatus };
 export type AgentStatusMap = Record<string, AgentStatus>;
 
 export interface TraceLine {
@@ -1975,9 +2001,8 @@ export function FloorScreen({
     [config],
   );
 
-  const sceneRef = useRef<OfficeScene | null>(null);
+  const [scene, setScene] = useState<OfficeScene | null>(null);
   const reconciling = useRef(false);
-  const [ready, setReady] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
   // Route → selection
@@ -2014,27 +2039,27 @@ export function FloorScreen({
     [navigate],
   );
 
-  const handleSceneReady = useCallback(
-    (scene: OfficeScene) => {
-      sceneRef.current = scene;
-      store.setStatuses(INITIAL_STATUSES);
-      setReady(true);
-    },
-    [store],
-  );
+  // Theme switch remounts the canvas (key={themeName}) → a NEW OfficeScene.
+  // Hold the scene in STATE (not a ref): updating it re-runs the bridge +
+  // reconcile effects against the new instance and tears down the old ones.
+  const handleSceneReady = useCallback((next: OfficeScene) => {
+    setScene(next);
+  }, []);
 
-  // Bridge-seam: store → scene (set up once the scene is ready).
+  // Bridge-seam: store → scene. Re-binds whenever the scene INSTANCE changes
+  // (e.g. after a Day/Night remount); the cleanup unsubscribes the old scene.
   useEffect(() => {
-    if (!ready || !sceneRef.current) return;
-    return applyStatusToScene(sceneRef.current, store);
-  }, [ready, store]);
+    if (!scene) return;
+    return applyStatusToScene(scene, store);
+  }, [scene, store]);
 
-  // Reconcile the scene to the route. The reconciling guard makes the kit's
-  // synchronous echo events (agent:click/object:click/entity:select fired from
-  // selectEntity) no-ops, so route → scene never loops back into navigate.
+  // Reconcile the scene to the route. Depends on the scene INSTANCE, so a
+  // Day/Night remount re-applies the current route selection to the new scene.
+  // The reconciling guard makes the kit's synchronous echo events
+  // (agent:click/object:click/entity:select fired from selectEntity) no-ops,
+  // so route → scene never loops back into navigate.
   useEffect(() => {
-    const scene = sceneRef.current;
-    if (!ready || !scene) return;
+    if (!scene) return;
     const id = selectedEntityId(resolvePanel(sel, agentInfos), targetToObject);
     reconciling.current = true;
     try {
@@ -2045,7 +2070,7 @@ export function FloorScreen({
     }
     // selKey captures sel; agentInfos/targetToObject are config-stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, selKey]);
+  }, [scene, selKey]);
 
   // Status simulation toggle (topbar). On → gateway pushes statuses into the
   // store (which the bridge-seam propagates to the scene + panels). Off → reset.

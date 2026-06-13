@@ -2,18 +2,21 @@
   "name": "trading-office",
   "version": "0.1.0",
   "private": true,
-  "description": "AI Office Shell / Control Room — Phase 0: Office Visual Builder Kit",
+  "description": "Trading Office — AI Office Shell / Control Room",
   "license": "MIT",
   "workspaces": [
     "packages/*",
+    "apps/*",
     "examples/*"
   ],
   "scripts": {
-    "dev": "npm run dev -w trading-lab-research-floor",
+    "dev": "npm run dev -w @trading-office/web",
+    "dev:preview": "npm run dev -w trading-lab-research-floor",
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "generate": "npm run generate -w trading-lab-research-floor",
-    "preview": "npm run preview -w trading-lab-research-floor"
+    "test": "npm test -w @trading-office/web",
+    "generate": "npm run generate -w @trading-office/trading-lab-floor",
+    "verify:assets": "node tools/sync-floor-public.mjs apps/web/public --check && node tools/sync-floor-public.mjs examples/trading-lab-research-floor/public --check"
   },
   "engines": {
     "node": ">=20.19"
