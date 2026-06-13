@@ -21,11 +21,10 @@ import {
   STATUS_POOLS,
 } from './fixtures';
 
-let messageSeq = 0;
-
 export class MockOfficeGateway implements OfficeGateway {
   private readonly latencyMs: number;
   private readonly tickMs: number;
+  private seq = 0;
 
   constructor(opts: { latencyMs?: number; tickMs?: number } = {}) {
     this.latencyMs = opts.latencyMs ?? 220;
@@ -58,9 +57,9 @@ export class MockOfficeGateway implements OfficeGateway {
 
   sendBossCommand(text: string): Promise<BossMessage> {
     // INERT: returns a canned transcript reply only. No side effects.
-    messageSeq += 1;
+    this.seq += 1;
     const msg: BossMessage = {
-      id: `m${messageSeq}`,
+      id: `m${this.seq}`,
       role: 'assistant',
       text: cannedBossReply(text),
       ts: '09:42:00',

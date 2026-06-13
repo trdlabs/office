@@ -24,6 +24,14 @@ export class OfficeRuntimeStore {
   }
 
   setStatuses(statuses: AgentStatusMap): void {
+    const cur = this.state.statuses;
+    const keys = Object.keys(statuses);
+    if (
+      keys.length === Object.keys(cur).length &&
+      keys.every((k) => cur[k] === statuses[k])
+    ) {
+      return;
+    }
     this.state = { statuses: { ...statuses } };
     this.emit();
   }

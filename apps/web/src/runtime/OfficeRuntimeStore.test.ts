@@ -32,4 +32,15 @@ describe('OfficeRuntimeStore', () => {
     s.setStatus('boss', 'idle');
     expect(spy).not.toHaveBeenCalled();
   });
+
+  it('setStatuses is a no-op when the map is unchanged', () => {
+    const s = new OfficeRuntimeStore();
+    s.setStatuses({ boss: 'running', analyst: 'idle' });
+    const spy = vi.fn();
+    s.subscribe(spy);
+    const snap = s.getSnapshot();
+    s.setStatuses({ boss: 'running', analyst: 'idle' });
+    expect(spy).not.toHaveBeenCalled();
+    expect(s.getSnapshot()).toBe(snap);
+  });
 });
