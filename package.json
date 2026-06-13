@@ -14,9 +14,15 @@
     "dev:preview": "npm run dev -w trading-lab-research-floor",
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm test -w @trading-office/web",
+    "test": "npm run test --workspaces --if-present",
+    "dev:server": "npm run dev -w @trading-office/server",
+    "dev:web:connected": "npm run dev:web:connected -w @trading-office/web",
+    "dev:connected": "concurrently -k -n server,web \"npm:dev:server\" \"npm:dev:web:connected\"",
     "generate": "npm run generate -w @trading-office/trading-lab-floor",
     "verify:assets": "node tools/sync-floor-public.mjs apps/web/public --check && node tools/sync-floor-public.mjs examples/trading-lab-research-floor/public --check"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
   },
   "engines": {
     "node": ">=20.19"

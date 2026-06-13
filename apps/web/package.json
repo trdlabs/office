@@ -14,10 +14,14 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "predev:web:connected": "node ../../tools/sync-floor-public.mjs apps/web/public",
+    "dev:web:connected": "vite --mode connected",
     "verify:assets": "node ../../tools/sync-floor-public.mjs apps/web/public --check"
   },
   "dependencies": {
     "@pixi/react": "^8.0.0",
+    "@trading-office/office-fixtures": "*",
+    "@trading-office/office-gateway": "*",
     "@trading-office/office-visual-kit": "*",
     "@trading-office/trading-lab-floor": "*",
     "pixi-viewport": "^6.0.3",
@@ -27,6 +31,7 @@
     "react-router-dom": "^7.1.0"
   },
   "devDependencies": {
+    "@trading-office/server": "*",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "@vitejs/plugin-react": "^5.0.0",

@@ -8,11 +8,14 @@ const agents: FloorAgentInfo[] = [
 const targetToObject = { 'backtest-summary': 'wall-monitor', 'infra-status': 'server-rack' };
 
 describe('resolvePanel', () => {
-  it('routes the boss to the command panel', () => {
-    expect(resolvePanel({ agentId: 'boss' }, agents)).toEqual({ kind: 'boss-command' });
+  it('routes the boss to the activity panel like any other agent', () => {
+    expect(resolvePanel({ agentId: 'boss' }, agents)).toEqual({ kind: 'agent-activity', agentId: 'boss' });
   });
   it('routes other agents to the activity panel', () => {
     expect(resolvePanel({ agentId: 'researcher' }, agents)).toEqual({ kind: 'agent-activity', agentId: 'researcher' });
+  });
+  it('opens the operator chat from the /operator shell route (not a floor entity)', () => {
+    expect(resolvePanel({ operator: true }, agents)).toEqual({ kind: 'operator-chat' });
   });
   it('flags unknown agents', () => {
     expect(resolvePanel({ agentId: 'ghost' }, agents)).toEqual({ kind: 'unknown', key: 'agent:ghost' });
@@ -32,8 +35,8 @@ describe('resolvePanel', () => {
 });
 
 describe('selectedEntityId', () => {
-  it('selects the boss agent', () => {
-    expect(selectedEntityId({ kind: 'boss-command' }, targetToObject)).toBe('boss');
+  it('selects no floor entity for the operator chat', () => {
+    expect(selectedEntityId({ kind: 'operator-chat' }, targetToObject)).toBeNull();
   });
   it('selects an agent', () => {
     expect(selectedEntityId({ kind: 'agent-activity', agentId: 'researcher' }, targetToObject)).toBe('researcher');

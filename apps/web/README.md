@@ -22,7 +22,7 @@ npm run dev   # → http://localhost:5174
 - **One data boundary:** the read-only `OfficeGateway` interface
   (`MockOfficeGateway` in Phase 1) → `OfficeRuntimeStore` → `applyStatusToScene`
   seam → `scene.setAgentStatus`. Panels never touch Pixi.
-- `sendBossCommand` is **inert** in Phase 1 (mock transcript only — no execution).
+- `sendOperatorMessage` is **inert** (accepted + a simulated reply lifecycle over the event stream — no execution authority).
 
 ## Layout
 

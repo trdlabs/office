@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi, afterEach } from 'vitest';
 import { MockOfficeGateway } from './MockOfficeGateway';
 
 const gw = new MockOfficeGateway({ latencyMs: 0 });
+afterEach(() => vi.useRealTimers());
 
 describe('MockOfficeGateway', () => {
   it('returns agent activity with logs', async () => {
@@ -16,14 +17,17 @@ describe('MockOfficeGateway', () => {
     expect(typeof rows[0]!.sharpe).toBe('number');
   });
 
-  it('sendBossCommand returns an assistant message and is inert', async () => {
-    const msg = await gw.sendBossCommand('pause all bots');
-    expect(msg.role).toBe('assistant');
-    expect(msg.text.toLowerCase()).toContain('no execution authority');
+  it('sendOperatorMessage is accepted and inert', async () => {
+    const acc = await gw.sendOperatorMessage({ text: 'pause all bots', source: 'web', target: 'orchestrator', floorId: 'trading-lab' });
+    expect(acc.status).toBe('accepted');
+    expect(acc.operatorMessageId).toBeTruthy();
+    expect(acc.conversationId).toBeTruthy();
   });
 
-  it('subscribeAgentStatuses can be unsubscribed', () => {
-    const off = gw.subscribeAgentStatuses(() => {});
+  it('subscribeOfficeEvents emits an initial snapshot and can be unsubscribed', () => {
+    const types: string[] = [];
+    const off = gw.subscribeOfficeEvents((e) => types.push(e.type));
+    expect(types[0]).toBe('agent_statuses_snapshot');
     expect(typeof off).toBe('function');
     off();
   });

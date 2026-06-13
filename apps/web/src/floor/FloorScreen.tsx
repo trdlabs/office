@@ -8,9 +8,9 @@ import { OfficeSceneCanvas } from '@trading-office/office-visual-kit/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMatch, useNavigate } from 'react-router-dom';
 import { type FloorThemeName } from '@trading-office/trading-lab-floor';
-import { useGateway, useRuntimeStore } from '../runtime/RuntimeContext';
+import { useGateway, useRuntimeStore, useConnectionStatus } from '../runtime/RuntimeContext';
 import { applyStatusToScene } from '../runtime/sceneBridge';
-import { INITIAL_STATUSES } from '../runtime/fixtures';
+import { INITIAL_STATUSES } from '@trading-office/office-fixtures';
 import { buildFloorConfig, FLOOR_BASE_PATH, panelTargetToObjectId } from './floorConfig';
 import { selectionKey, type RouteSelection } from './floorSelection';
 import {
@@ -32,6 +32,8 @@ export function FloorScreen({
   const navigate = useNavigate();
   const store = useRuntimeStore();
   const gateway = useGateway();
+  const connection = useConnectionStatus();
+  const degraded = connection === 'reconnecting' || connection === 'disconnected' || connection === 'error';
 
   const config = useMemo(() => buildFloorConfig(themeName), [themeName]);
   const targetToObject = useMemo(() => panelTargetToObjectId(config), [config]);
@@ -47,9 +49,11 @@ export function FloorScreen({
   // Route → selection
   const agentMatch = useMatch(`${FLOOR_BASE_PATH}/agent/:agentId`);
   const panelMatch = useMatch(`${FLOOR_BASE_PATH}/panel/:panelTarget`);
+  const operatorMatch = useMatch(`${FLOOR_BASE_PATH}/operator`);
   const sel: RouteSelection = {
     agentId: agentMatch?.params.agentId,
     panelTarget: panelMatch?.params.panelTarget,
+    operator: !!operatorMatch,
   };
   const panelKind = resolvePanel(sel, agentInfos);
   const selKey = selectionKey(sel);
@@ -118,8 +122,8 @@ export function FloorScreen({
       store.setStatuses(INITIAL_STATUSES);
       return;
     }
-    if (!gateway.subscribeAgentStatuses) return;
-    const off = gateway.subscribeAgentStatuses((statuses) => store.setStatuses(statuses));
+    if (!gateway.subscribeOfficeEvents) return;
+    const off = gateway.subscribeOfficeEvents((e) => store.reduce(e));
     return off;
   }, [simulate, gateway, store]);
 
@@ -136,6 +140,21 @@ export function FloorScreen({
           onEntitySelect={onEntitySelect}
         />
       </div>
+
+      <button
+        type="button"
+        className="floor__operator-btn"
+        aria-pressed={!!operatorMatch}
+        onClick={() => navigate(operatorMatch ? FLOOR_BASE_PATH : `${FLOOR_BASE_PATH}/operator`)}
+      >
+        Operator
+      </button>
+
+      {degraded && (
+        <div className="floor__conn-warning" role="alert">
+          Connection {connection} — live data may be stale. (No fallback to mock.)
+        </div>
+      )}
 
       <PanelDock
         open={opensDock(panelKind)}

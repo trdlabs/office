@@ -1,14 +1,14 @@
 import type {
-  AgentActivity,
   AgentStatus,
+  AgentStatusMap,
   BacktestSummary,
   BotHealth,
   Hypothesis,
   InfraStatus,
   KnowledgeEntry,
-} from './types';
+} from '@trading-office/office-gateway';
 
-export const INITIAL_STATUSES: Record<string, AgentStatus> = {
+export const INITIAL_STATUSES: AgentStatusMap = {
   boss: 'thinking',
   analyst: 'idle',
   researcher: 'thinking',
@@ -17,43 +17,6 @@ export const INITIAL_STATUSES: Record<string, AgentStatus> = {
   evaluator: 'backtesting',
   'perf-monitor': 'idle',
 };
-
-/** Plausible status loops per agent for the "simulate activity" toggle. */
-export const STATUS_POOLS: Record<string, AgentStatus[]> = {
-  boss: ['thinking', 'running', 'waiting', 'thinking'],
-  analyst: ['thinking', 'reviewing', 'idle', 'success'],
-  researcher: ['thinking', 'running', 'idle', 'thinking'],
-  critic: ['reviewing', 'blocked', 'reviewing', 'idle'],
-  builder: ['running', 'idle', 'success', 'running'],
-  evaluator: ['backtesting', 'success', 'backtesting', 'failed'],
-  'perf-monitor': ['idle', 'running', 'failed', 'running'],
-};
-
-const TASKS: Record<string, string> = {
-  boss: 'Coordinating the BTC mean-reversion research sprint',
-  analyst: 'Scoring 12 candidate features for regime detection',
-  researcher: 'Sweeping lookback windows on the momentum signal',
-  critic: 'Auditing risk on the latest strategy proposal',
-  builder: 'Compiling strategy v0.4 into the backtest harness',
-  evaluator: 'Running walk-forward backtest on ETH 4h',
-  'perf-monitor': 'Watching live paper-trading drawdown',
-};
-
-export function agentActivity(agentId: string): AgentActivity {
-  const status = INITIAL_STATUSES[agentId] ?? 'idle';
-  return {
-    agentId,
-    status,
-    currentTask: status === 'idle' ? null : (TASKS[agentId] ?? 'Working'),
-    logs: [
-      { ts: '09:41:02', level: 'info', text: `agent ${agentId} picked up task` },
-      { ts: '09:41:08', level: 'debug', text: 'loaded dataset shard 3/8' },
-      { ts: '09:41:15', level: 'info', text: 'evaluating candidate parameters' },
-      { ts: '09:41:21', level: 'warn', text: 'sharpe below threshold on fold 2' },
-      { ts: '09:41:30', level: 'info', text: 'continuing sweep' },
-    ],
-  };
-}
 
 export const HYPOTHESES: Hypothesis[] = [
   { id: 'h1', title: 'BTC funding-rate reversion', stage: 'testing', summary: 'Negative funding precedes short-horizon mean reversion.' },
@@ -82,7 +45,7 @@ export const KNOWLEDGE: KnowledgeEntry[] = [
 
 export const INFRA: InfraStatus = {
   services: [
-    { name: 'office-gateway (mock)', up: true, detail: 'serving fixtures' },
+    { name: 'office-gateway', up: true, detail: 'serving fixtures' },
     { name: 'market-data feed', up: true, detail: 'lag 120ms' },
     { name: 'backtest workers', up: true, detail: '3/3 healthy' },
     { name: 'archive store', up: false, detail: 'read-only snapshot' },
@@ -94,9 +57,5 @@ export const INFRA: InfraStatus = {
   lastSync: '09:41:30',
 };
 
-export function cannedBossReply(text: string): string {
-  const t = text.toLowerCase();
-  if (t.includes('status')) return 'All seven agents are active. Evaluator hit a failed fold; researcher is re-sweeping. (mock)';
-  if (t.includes('pause') || t.includes('stop')) return 'No execution authority in Phase 1 — I can only report. Nothing was paused. (mock)';
-  return `Acknowledged: "${text}". This is a mock office shell — no trading actions are taken. (mock)`;
-}
+// Re-export AgentStatus so consumers can build typed status data from one import.
+export type { AgentStatus };

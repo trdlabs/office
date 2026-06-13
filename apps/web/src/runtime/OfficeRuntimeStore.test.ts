@@ -1,46 +1,29 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { OfficeRuntimeStore } from './OfficeRuntimeStore';
 
-describe('OfficeRuntimeStore', () => {
-  it('starts empty and accepts a status map', () => {
-    const s = new OfficeRuntimeStore();
-    expect(s.getSnapshot().statuses).toEqual({});
-    s.setStatuses({ boss: 'running' });
-    expect(s.getSnapshot().statuses).toEqual({ boss: 'running' });
+describe('OfficeRuntimeStore.reduce', () => {
+  it('applies a snapshot then a single status change', () => {
+    const store = new OfficeRuntimeStore();
+    store.reduce({ type: 'agent_statuses_snapshot', ts: '1', statuses: { boss: 'thinking', analyst: 'idle' } });
+    expect(store.getSnapshot().statuses).toEqual({ boss: 'thinking', analyst: 'idle' });
+    store.reduce({ type: 'agent_status_changed', ts: '2', agentId: 'analyst', status: 'running' });
+    expect(store.getSnapshot().statuses.analyst).toBe('running');
   });
 
-  it('notifies subscribers on change and returns a stable snapshot otherwise', () => {
-    const s = new OfficeRuntimeStore();
-    const spy = vi.fn();
-    const off = s.subscribe(spy);
-    const before = s.getSnapshot();
-    s.setStatus('boss', 'running');
-    expect(spy).toHaveBeenCalledTimes(1);
-    expect(s.getSnapshot()).not.toBe(before);
-    // same value → no new snapshot, no notify
-    const after = s.getSnapshot();
-    s.setStatus('boss', 'running');
-    expect(spy).toHaveBeenCalledTimes(1);
-    expect(s.getSnapshot()).toBe(after);
-    off();
+  it('ignores non-status events (stays narrow — not a god-object)', () => {
+    const store = new OfficeRuntimeStore();
+    store.reduce({ type: 'agent_statuses_snapshot', ts: '1', statuses: { boss: 'thinking' } });
+    store.reduce({ type: 'heartbeat', ts: '2' });
+    store.reduce({ type: 'agent_trace_appended', ts: '3', agentId: 'boss', line: { ts: '3', level: 'info', text: 'x' } });
+    expect(store.getSnapshot().statuses).toEqual({ boss: 'thinking' });
   });
 
-  it('stops notifying after unsubscribe', () => {
-    const s = new OfficeRuntimeStore();
-    const spy = vi.fn();
-    s.subscribe(spy)();
-    s.setStatus('boss', 'idle');
-    expect(spy).not.toHaveBeenCalled();
-  });
-
-  it('setStatuses is a no-op when the map is unchanged', () => {
-    const s = new OfficeRuntimeStore();
-    s.setStatuses({ boss: 'running', analyst: 'idle' });
-    const spy = vi.fn();
-    s.subscribe(spy);
-    const snap = s.getSnapshot();
-    s.setStatuses({ boss: 'running', analyst: 'idle' });
-    expect(spy).not.toHaveBeenCalled();
-    expect(s.getSnapshot()).toBe(snap);
+  it('tracks shell connection state without touching statuses', () => {
+    const store = new OfficeRuntimeStore();
+    store.reduce({ type: 'agent_statuses_snapshot', ts: '1', statuses: { boss: 'thinking' } });
+    expect(store.getSnapshot().connection).toBe('connected');
+    store.setConnection('reconnecting');
+    expect(store.getSnapshot().connection).toBe('reconnecting');
+    expect(store.getSnapshot().statuses).toEqual({ boss: 'thinking' });
   });
 });

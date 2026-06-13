@@ -2,7 +2,7 @@ import { type ReactElement } from 'react';
 import { type PanelKind } from './panelRegistry';
 import { type ObjectPanelTarget } from './objectPanels';
 import { AgentActivityPanel } from './panels/AgentActivityPanel';
-import { BossCommandPanel } from './panels/BossCommandPanel';
+import { OperatorChatPanel } from './panels/OperatorChatPanel';
 import { HypothesisPanel } from './panels/HypothesisPanel';
 import { BacktestPanel } from './panels/BacktestPanel';
 import { BotHealthPanel } from './panels/BotHealthPanel';
@@ -22,8 +22,8 @@ const OBJECT_PANELS: Record<ObjectPanelTarget, (onClose: () => void) => ReactEle
 
 function renderPanel(panelKind: PanelKind, onClose: () => void) {
   switch (panelKind.kind) {
-    case 'boss-command':
-      return <BossCommandPanel onClose={onClose} />;
+    case 'operator-chat':
+      return <OperatorChatPanel onClose={onClose} />;
     case 'agent-activity':
       return <AgentActivityPanel agentId={panelKind.agentId} onClose={onClose} />;
     case 'object':
@@ -39,7 +39,7 @@ function renderPanel(panelKind: PanelKind, onClose: () => void) {
 /** Stable key so dock content remounts per distinct panel (not on every render). */
 function panelContentKey(panelKind: PanelKind): string {
   switch (panelKind.kind) {
-    case 'boss-command': return 'boss';
+    case 'operator-chat': return 'operator';
     case 'agent-activity': return `agent:${panelKind.agentId}`;
     case 'object': return `obj:${panelKind.panelTarget}`;
     case 'unknown': return `unknown:${panelKind.key}`;
