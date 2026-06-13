@@ -61,7 +61,6 @@ body {
 
 /* floor + dock */
 .floor { position: absolute; inset: 0; }
-.floor--placeholder { display: flex; align-items: center; justify-content: center; color: var(--muted); }
 .floor__canvas { position: absolute; inset: 0; }
 .dock {
   position: absolute; top: 0; right: 0; height: 100%; width: var(--dock-w);

@@ -5,8 +5,8 @@ import { FLOOR_THEMES, type FloorThemeName } from '@trading-office/trading-lab-f
 
 const THEME_ORDER: FloorThemeName[] = ['day', 'night'];
 
-// Authed chrome (topbar: theme toggle + simulate toggle + logout). Defined now;
-// mounted around FloorScreen in Milestone 4 (Task 4.3), not yet wired into the router.
+// Authed chrome (topbar: theme toggle + simulate toggle + logout), mounted
+// around FloorScreen by App.tsx's FloorRoute.
 export function AppShell({
   themeName,
   onThemeChange,
