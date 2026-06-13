@@ -113,7 +113,15 @@ export class HttpOfficeGateway implements OfficeGateway {
       const parsed = officeEventSchema.safeParse(raw);
       if (parsed.success) for (const fn of this.subscribers) fn(parsed.data);
     });
-    ws.addEventListener('close', () => { this.ws = null; this.setConnection(this.attempts >= MAX_RECONNECT_ATTEMPTS ? 'disconnected' : 'reconnecting'); this.scheduleReconnect(); });
+    ws.addEventListener('close', () => {
+      if (this.closedByUs || this.subscribers.size === 0) {
+        this.ws = null;
+        return;
+      }
+      this.ws = null;
+      this.setConnection(this.attempts >= MAX_RECONNECT_ATTEMPTS ? 'disconnected' : 'reconnecting');
+      this.scheduleReconnect();
+    });
     ws.addEventListener('error', () => { /* do not swallow in the UI: a close + reconnect follows */ });
   }
 

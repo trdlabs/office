@@ -57,6 +57,23 @@ describe('HttpOfficeGateway', () => {
     expect(sockets[0]!.closed).toBe(true);
   });
 
+  it('does not flag a degraded connection on intentional close (last unsubscribe)', () => {
+    const sockets: FakeWs[] = [];
+    const gw = new HttpOfficeGateway({
+      baseUrl: 'http://x',
+      fetchImpl: async () => jsonResponse(null),
+      wsFactory: (url) => { const s = new FakeWs(url); sockets.push(s); return s; },
+    });
+    const seen: string[] = [];
+    gw.subscribeConnection((s) => seen.push(s));
+    const off = gw.subscribeOfficeEvents!(() => {});
+    sockets[0]!.open();           // connecting → connected
+    off();                        // last unsubscribe → intentional disconnect → socket close
+    expect(seen).not.toContain('reconnecting');
+    expect(seen).not.toContain('disconnected');
+    expect(seen).not.toContain('error');
+  });
+
   it('signals connection state across the WS lifecycle', () => {
     const sockets: FakeWs[] = [];
     const gw = new HttpOfficeGateway({
