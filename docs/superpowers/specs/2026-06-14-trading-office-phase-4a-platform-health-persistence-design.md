@@ -106,29 +106,27 @@ The PG upsert itself is a tiny shared writer (`src/canonical/writers/platform_he
 
 A periodic snapshotter started in `run_long_oi.ts` / `run_short_oi.ts` `main()`, after `bootstrapBotRun` (which already yields `{ pool, runtimeCanonicalWriter, operationalEventWriter }`). Every `PLATFORM_HEALTH_SNAPSHOT_INTERVAL_MS` (default 30 s; shorter only in tests/dev) it:
 
-1. computes gate indicators **in-process** via the extracted `evaluateHealthGate` (§6.2) fed from the runtime's in-memory telemetry/event state (not by re-reading JSONL);
-2. writes `{ domain:'runtime', source:botId, payload: RuntimeHealthIndicators-shaped }`.
+1. runs the **existing health-check pipeline over the runtime's OWN events JSONL** — `analyzeEvents(ownEventsFile, …) → buildChecks → evaluateHealthGate` (§6.2) — producing the full `RuntimeHealthIndicators` (`ready/freshnessOk/pipelineOk/serviceOk/botOk`). This is the **same gate `scripts/check_runtime_health.ts` uses** (max fidelity), not a re-invented in-memory computation;
+2. writes `{ domain:'runtime', source:botId, schemaVersion:1, payload: RuntimeHealthIndicators }`.
 
-The snapshotter is lifecycle-bound (stops on shutdown), uses the already-threaded writer, and never blocks the trading loop (fire-and-forget with the same swallow-on-error discipline as §5.2).
+**Bounded by construction:** the JSONL read is bounded (recent window / `PLATFORM_HEALTH_RUNTIME_GATE_MAX_BYTES` tail + bounded timeout), runs off the trading hot path (`setInterval(...).unref()`), and never blocks the trading loop. If the gate cannot be built (log unreadable / parse failure / timeout) the snapshotter writes **no fake `ok`** — it skips the write (the latest row goes stale → reader degraded) or writes an honest down-indicators snapshot. Reading the runtime's **own** log to compute its own snapshot, then persisting to PG, keeps the read boundary clean — the *reader* still only reads PG; this is **not** the rejected cross-process host-tail.
 
-> **Decomposition (operator-confirmed, locked):** writers publish **local component truth** only; readers **compose** global/platform health from the latest snapshots + freshness thresholds; the **runtime writer must not depend on market-service state.** The historical gate (`scripts/check_runtime_health.ts`) merged **cross-process** signals from JSONL (`serviceOk` from market-data-service heartbeat, `freshnessOk` from aggregator summary); a single in-process runtime cannot see the market-service's memory. So the runtime snapshot carries only the **runtime-scoped** indicators it computes in-process (`ready`, `pipelineOk`, `botOk`), and the ops-read `runtime-health` reader **composes** the global gate by drawing `serviceOk`/`freshnessOk` from the latest `market`/`coverage` snapshots (§6.1).
->
-> **PROVISIONAL (M0 calibration):** the exact indicator→source mapping is confirmed against the real `evaluateHealthGate` inputs before coding; where a contributing source is absent or stale, the composed indicator is honestly `false`/degraded, never assumed `true`.
+> **No cross-process composition needed (A1).** Because the real gate already yields all five indicators from the runtime's own log, the ops-read `runtime-health` reader simply reads the latest `runtime` snapshot(s) and calls `deriveRuntimeStatus` — multi-source (`long_oi` + `short_oi`) is worst-of. The runtime writer does **not** depend on market-service state. **Future:** the JSONL source can be swapped for an in-memory health accumulator **without changing the PG table or the read API**.
 
 ### 5.2 market-health + source-coverage via an optional gated `HealthSnapshotSink` (market-service core stays DB-free)
 
 **Hard requirement: the market-service core must remain DB-free.** We do **not** add a direct DB dependency inside `MarketAggregator` / `ServiceDiagnostics` / `MarketDataService` core. Instead we add an **optional capability**, mirroring the existing `attachDecisionLogCapability` pattern:
 
-- **Port (in market-service core):** `HealthSnapshotSink` (a.k.a. `PlatformHealthSnapshotSink`) — a minimal interface, e.g. `publish(snapshot: HealthSnapshotInput): void` (fire-and-forget; no Promise the core awaits in its loop).
+- **Port (in market-service core):** `HealthSnapshotSink` — fire-and-forget, two methods: `publishMarket(input)` (called from `startHeartbeat`) and `publishCoverage(rollup)` (called from `CoverageEmitter.flushSummary`). The core never awaits it in its loop.
 - **Default implementation:** `NoopHealthSnapshotSink` — does nothing. This is the default the core is constructed with, so default deployments stay exactly as today (WS + JSONL only, no DB).
 - **PG implementation:** `PgHealthSnapshotSink` — wired **only at the process composition boundary** (`run_market_data_service.ts` bin), constructed **only if** `DATABASE_URL` is set **and** `MARKET_HEALTH_PERSIST` is enabled. It owns its **own dedicated pool capped at `max: 1` connection**.
 - **The market-service domain/core never imports `pg` / canonical writers.** Only the bin does. The port keeps the dependency direction clean (core depends on an interface; the bin injects the concrete adapter).
-- **Not in the hot path.** The sink is invoked from the existing low-frequency loops only, throttled to `PLATFORM_HEALTH_SNAPSHOT_INTERVAL_MS` (default 30 s): the `startHeartbeat` tick publishes the `market` snapshot; a coverage rollup tick (aligned to finalization, not per-snapshot) publishes the `coverage` snapshot.
+- **Not in the hot path.** The sink is invoked from the existing low-frequency loops only, throttled to `PLATFORM_HEALTH_SNAPSHOT_INTERVAL_MS` (default 30 s): `startHeartbeat` → `publishMarket` (from `ServiceDiagnostics.snapshot()` + `ageMs`→`streamAgeMs`); the per-minute `market_history_coverage_summary` (`CoverageEmitter.flushSummary`) → `publishCoverage` (event-driven; there is no standing coverage accessor to pull on the heartbeat).
 - **Write failures never affect the market-service.** The PG sink swallows errors (logs once, drops), with a **bounded write timeout**, **no retry storm** (at most one best-effort attempt per tick), and it **never blocks the heartbeat loop**. If PG is unavailable, the market-service degrades to today's behavior; the missing snapshots simply read as `unavailable` downstream.
 
-`market` payload (compact): `ServiceDiagnostics.snapshot()` safe counters + `streamAgeMs` (the `MarketServiceHealthSnapshot`/`MarketHealthSignal` fields) — no raw provider dumps.
+`market` payload (compact): `ServiceDiagnostics.snapshot()` safe counters + `streamAgeMs` (mapped from the heartbeat's `ageMs = Date.now() − lastProviderMessageTs`) — the `MarketHealthSignal` fields; no raw provider / `wsDebug` dumps.
 
-`coverage` payload (**aggregated**): a per-`(source, kind)` rollup — `{ source, kind, supported, lastSeenMs }` per feed (the `SourceFreshnessSignal` shape), **not** a per-symbol/per-minute dump. Coverage is only meaningful when `cfg.aggregator.useAggregatedMarketData` is on; otherwise the rollup is empty/`unsupported` and reads honestly as such.
+`coverage` payload (**aggregated, event-driven**): the sink caches the latest `market_history_coverage_summary` emission (per-minute `flushSummary`, already aggregated per-`(source,kind)` via `takerSourceStates` / `fundingSourceStates`) and writes a `coverage` snapshot in the `SourceFreshnessSignal` shape — **never** a per-symbol/per-tick dump. Coverage exists only when `historicalStorage` **and** `cfg.providerCfg.aggregator.useAggregatedMarketData` are on; otherwise the snapshot is empty/`unsupported` and reads honestly as such.
 
 ### 5.3 execution-health — **no writer**
 
@@ -144,15 +142,15 @@ Replace the `unavailable*` stubs in the `readers` bag of `start-ops-read.ts` wit
 
 | reader | reads | derive |
 |---|---|---|
-| `createPgRuntimeHealthReader(pool)` | latest `runtime` rows (per source) + latest `market`/`coverage` rows for the composed indicators (§5.1 note) | `RuntimeHealthIndicators` → reuse exported `deriveRuntimeStatus`; multi-source → worst-of |
+| `createPgRuntimeHealthReader(pool)` | latest `runtime` rows (per source) | full `RuntimeHealthIndicators` straight from the snapshot payload; multi-source (`long_oi`+`short_oi`) → worst-of; reuse exported `deriveRuntimeStatus` |
 | `createPgMarketHealthReader(pool)` | latest `market` row | `MarketHealthSignal` → reuse existing `deriveMarketStatus(streamAgeMs)`; apply snapshot-staleness |
 | `createPgSourceCoverageReader(pool)` | latest `coverage` row | `SourceFreshnessSignal[]` → existing `deriveCoverageState` |
 
 Each reader applies **snapshot-staleness**: if the latest row's `captured_at_ms` is older than `PLATFORM_HEALTH_STALENESS_MS` (default 120 000), the signal is treated as not-live (writer-death detection); the payload's own stream-age freshness still uses the existing `DEFAULT_MARKET_FRESH_MS`/`DEFAULT_COVERAGE_FRESH_MS = 120 000` helpers. Readers explicitly accept `schema_version = 1` and treat an unknown version as `unavailable` rather than mis-parsing. No row → return `null` → handler emits `availability:'unavailable'`. The handler/dispatch/DTO layers are unchanged.
 
-### 6.2 Extract `evaluateHealthGate` (the main refactor)
+### 6.2 Extract the health-gate pipeline (the main refactor)
 
-`scripts/check_runtime_health.ts` runs `main()` at module top level and exports nothing, so it cannot be imported. Extract `evaluateHealthGate` (and the helper types/scanners it needs — `Check`/`EventState` and the relevant `analyzeEvents`/`buildChecks` pieces, or parameterize them) into a new side-effect-free module `src/operations/health/health_gate.ts`. `check_runtime_health.ts` re-imports from it and keeps its CLI behavior unchanged (a parity test guards this). `deriveRuntimeStatus` already lives exported in `src/operations/sources/runtime-health-reader.ts` — reuse, no extraction. The runtime snapshotter (§5.1) imports the extracted gate and feeds it in-memory state.
+`scripts/check_runtime_health.ts` runs `main()` at module top level and exports nothing, so it cannot be imported. Extract the **pipeline the snapshotter needs** — `evaluateHealthGate` + `buildChecks` + `analyzeEvents` + helper deps (`Check`, `EventState`, `makeCheck`, `setCheck`, `parseJsonLine`, `percentile`, `toNum`, …) — into importable, side-effect-free module(s) under `src/health/` (`health_gate.ts` for the pure gate + `Check`/`EventState`; `event_scan.ts` for the bounded JSONL scanners). `check_runtime_health.ts` re-imports them; its top-level `main()` is guarded (`if (import.meta.url === pathToFileURL(process.argv[1]).href)`) or moved to a bin wrapper so importing the modules never launches the CLI, and its observable behavior is unchanged (a parity gate proves it). `deriveRuntimeStatus` already lives exported in `src/operations/sources/runtime-health-reader.ts` — reuse, no extraction. The runtime snapshotter (§5.1) imports this pipeline and runs it over its own **bounded** JSONL window.
 
 ### 6.3 New `execution-health` resource (activity-proxy)
 
@@ -207,6 +205,7 @@ Hard constraints for this and any follow-on monitoring work, fixed here:
 | `PLATFORM_HEALTH_SNAPSHOT_INTERVAL_MS` | trading-runtime + market-service | snapshot write cadence (shared by both writers); shorter only in tests/dev | `30000` |
 | `MARKET_HEALTH_PERSIST` | market-service | explicit opt-in for the PG sink (else `NoopHealthSnapshotSink`) | `off` |
 | `PLATFORM_HEALTH_STALENESS_MS` | ops-read | writer-death staleness threshold for readers; shorter only in tests/dev | `120000` |
+| `PLATFORM_HEALTH_RUNTIME_GATE_MAX_BYTES` | trading-runtime | bounded tail size for the runtime gate's own-JSONL read | `2000000` |
 | `OPS_READ_TOKENS` / `OPS_READ_PORT` | ops-read | existing bearer allowlist / port (unchanged) | — |
 
 **Defaults keep the market-service DB-free:** the PG sink is engaged only when `DATABASE_URL` is set **and** `MARKET_HEALTH_PERSIST` is on. The runtime writer needs no enable flag (the runtime already requires `DATABASE_URL`); both writers share `PLATFORM_HEALTH_SNAPSHOT_INTERVAL_MS` (default 30 s) and the ops-read readers use `PLATFORM_HEALTH_STALENESS_MS` (default 120 s). Shorter interval/staleness values are for tests/dev only.
@@ -233,6 +232,7 @@ Hard constraints for this and any follow-on monitoring work, fixed here:
 | no snapshot row | reader returns `null` → handler `availability:'unavailable'` |
 | ops-read PG unreachable | existing behavior — `internal_read_error` / `unavailable`, never fabricated |
 | coverage with aggregation off | `unsupported` rollup; honest |
+| runtime gate unbuildable (log unreadable / parse / timeout) | skip write (row goes stale → degraded) or honest down-indicators; **never** fake `ok` |
 | no recent `execution_*` events | execution-health `unavailable` (honest "no recent activity") |
 
 ---
@@ -241,10 +241,10 @@ Hard constraints for this and any follow-on monitoring work, fixed here:
 
 - **Migration:** table shape incl. `schema_version SMALLINT NOT NULL DEFAULT 1`; upsert keeps one row per (domain, source); `captured_at_ms` + `schema_version` update on conflict.
 - **`platform_health_snapshot_writer` (unit):** upsert via fake/embedded `pool`; payload round-trip.
-- **runtime snapshotter (unit):** interval tick writes a `runtime` row; computes indicators from injected in-memory state; stops on shutdown; write error swallowed (loop survives).
+- **runtime snapshotter:** runs the extracted gate pipeline over a fixture JSONL window → writes a `runtime` row with the indicators; bounded read honored (max-bytes/timeout); gate-unbuildable → **no fake `ok`** (skip or down-indicators); write error swallowed (loop survives); interval `.unref()`'d.
 - **`evaluateHealthGate` extraction (parity):** extracted module yields identical indicators to the prior in-script logic for representative inputs; `check_runtime_health.ts` CLI unchanged.
 - **`HealthSnapshotSink` (unit):** `NoopHealthSnapshotSink` is a no-op (no DB import reachable from market-service core — an import-boundary guard asserts `src/market/**` never imports `pg`/canonical writers); `PgHealthSnapshotSink` writes via `max:1` pool, bounded timeout, swallow-on-error, non-blocking.
-- **market-service wiring (unit):** bin engages `PgHealthSnapshotSink` only when `DATABASE_URL` + `MARKET_HEALTH_PERSIST`; else `Noop`. Heartbeat loop publishes market snapshot; coverage rollup is aggregated per (source,kind), not per-symbol.
+- **market-service wiring:** bin engages `PgHealthSnapshotSink` only when `DATABASE_URL` + `MARKET_HEALTH_PERSIST`; else `Noop`. `startHeartbeat` → `publishMarket`; `flushSummary` → `publishCoverage` (aggregated per (source,kind), not per-symbol); `Noop` keeps the market core DB-free when persistence is off.
 - **PG readers (unit, fake/embedded PG):** runtime (multi-source worst-of + composed `serviceOk`/`freshnessOk`), market (`deriveMarketStatus` + staleness), coverage (`deriveCoverageState`); stale row (> `PLATFORM_HEALTH_STALENESS_MS`) → degraded/down; unknown `schema_version` → unavailable; absent → `null`.
 - **`execution-health` reader (unit):** derives counts/last-event from `operational_event` `execution_*`; rising errors → degraded/down; no rows → unavailable.
 - **Ops handlers/dispatch (contract):** `/ops/health/runtime|market|execution`, `/ops/coverage` return DTOs or `availability:'unavailable'`; `OpsError` taxonomy respected; `/ops/discover` advertises `execution-health` + backed capabilities.
@@ -258,14 +258,15 @@ Hard constraints for this and any follow-on monitoring work, fixed here:
 ```
 migrations/canonical/<next>_create_platform_health_snapshot.sql   # new — the channel table
 src/canonical/writers/platform_health_snapshot_writer.ts          # new — shared PG upsert (writeSnapshot)
-src/operations/health/health_gate.ts                              # new — extracted evaluateHealthGate (+ helpers), side-effect-free
-scripts/check_runtime_health.ts                                   # edit — import gate from health_gate; CLI unchanged
-src/runtime/health/runtime_health_snapshotter.ts                  # new — periodic runtime snapshot tick
+src/health/health_gate.ts                                         # new — extracted evaluateHealthGate (+ Check/EventState), pure
+src/health/event_scan.ts                                          # new — extracted analyzeEvents/buildChecks (+ helpers), bounded JSONL scan
+scripts/check_runtime_health.ts                                   # edit — import gate+scan; guard top-level main(); CLI unchanged (parity gate)
+src/runtime/health/runtime_health_snapshotter.ts                  # new — periodic tick: run gate over own bounded JSONL → PG snapshot
 src/app/run_long_oi.ts                                            # edit — start snapshotter with BotRunHandle pool/writer
 src/app/run_short_oi.ts                                           # edit — same
 src/market/health/health_snapshot_sink.ts                         # new — HealthSnapshotSink port + NoopHealthSnapshotSink (core, no pg)
 src/market/service/market_data_service.ts                         # edit — accept optional sink; publish market snapshot from startHeartbeat (not hot path)
-src/market/service/finalization/coverage_emitter.ts               # edit — publish aggregated coverage rollup to sink
+src/market/service/finalization/coverage_emitter.ts               # edit — feed each flushSummary rollup to sink.publishCoverage
 src/canonical/adapter/pg_health_snapshot_sink.ts                  # new — PgHealthSnapshotSink (own max:1 pool), composition-boundary only
 src/app/run_market_data_service.ts                                # edit — inject PgHealthSnapshotSink iff DATABASE_URL + MARKET_HEALTH_PERSIST, else Noop
 src/operations/sources/runtime-health-reader.ts                   # edit — add createPgRuntimeHealthReader (deriveRuntimeStatus reused)
@@ -283,8 +284,8 @@ src/operations/bin/start-ops-read.ts                              # edit — swa
 
 ## 14. Milestones
 
-- **M0 — channel + calibration:** migration `platform_health_snapshot` + `platform_health_snapshot_writer` + tests. **Calibration:** confirm, against real `evaluateHealthGate` inputs, the runtime-scoped vs cross-process indicator split (§5.1 note) and the exact `operational_event` `execution_*` type names (§6.3).
-- **M1 — runtime half (cheap):** extract `evaluateHealthGate` → `health_gate.ts` (parity test) + `runtime_health_snapshotter` wired in `run_long_oi`/`run_short_oi` + `createPgRuntimeHealthReader` un-stub + `execution-health` reader/handler/DTO/catalog (independent, PG-native). After M1, `/ops/health/runtime` + `/ops/health/execution` are live.
+- **M0 — channel:** migration `platform_health_snapshot` (+ `app` grants: INSERT/UPDATE/SELECT) + `platform_health_snapshot_writer` (upsert) + a gate. Calibration is already resolved: runtime-health = the real gate over the runtime's own JSONL (A1); coverage = event-driven `market_history_coverage_summary` (B1); `execution_*` type names confirmed in `OPERATIONAL_EVENT_TYPES`.
+- **M1 — runtime half + execution:** extract the gate pipeline → `src/health/health_gate.ts` + `event_scan.ts` (parity gate; guard CLI `main()`) + `runtime_health_snapshotter` (gate over own bounded JSONL) wired in `run_long_oi`/`run_short_oi` + `createPgRuntimeHealthReader` un-stub + `execution-health` reader/handler/DTO/catalog (independent, PG-native). After M1, `/ops/health/runtime` + `/ops/health/execution` are live.
 - **M2 — market half (gated sink):** `HealthSnapshotSink` port + `NoopHealthSnapshotSink` (core) + `PgHealthSnapshotSink` (adapter, `max:1`) + market/coverage publish from heartbeat/coverage loops + bin wiring (`DATABASE_URL` + `MARKET_HEALTH_PERSIST`) + `createPgMarketHealthReader`/`createPgSourceCoverageReader` un-stub + import-boundary guard (market core has no pg). After M2, `/ops/health/market` + `/ops/coverage` are live when enabled.
 - **M3 — discover + integration + hardening:** `/ops/discover` updates + real-PG integration tests (writer→row→reader; staleness; no-`DATABASE_URL` degradation) + final honesty/availability conformance.
 
@@ -294,7 +295,7 @@ M1 may ship independently of M2 (the runtime half is decoupled from the market h
 
 ## 15. Risks & future phases
 
-- **Cross-process runtime gate (primary design risk):** the global gate historically merged JSONL across processes; in-process computation loses the cross-process view. Resolved by the locked decomposition — **writers publish local component truth; readers compose** global health from the latest snapshots; the **runtime writer never depends on market-service state.** `serviceOk`/`freshnessOk` are composed from the `market`/`coverage` snapshots in the runtime reader, with honest degradation where a source is absent/stale. Exact indicator→source mapping confirmed in M0 calibration; **never assume `true`**.
+- **runtime-health source = the runtime's own JSONL (A1, primary design risk):** the canonical gate (`evaluateHealthGate`) consumes `Check[]` built from JSONL, not in-memory state. The snapshotter reuses the real pipeline over the runtime's **own** bounded log window — max fidelity, but couples the snapshotter to its own log file + a bounded read. Mitigations: bounded window/bytes/timeout, off the hot path (`.unref()`), gate-unbuildable → degraded/unavailable (**never** fake `ok`). The JSONL source can later be replaced by an in-memory accumulator with **no change to the PG table or read API**.
 - **New DB coupling on the market-service:** mitigated by the optional gated `HealthSnapshotSink` (core stays DB-free; PG only at the bin; `max:1` pool; fire-and-forget; no hot-path, no retry-storm). Default deployment is unchanged.
 - **`evaluateHealthGate` extraction** drags helper types/scanners; a parity test pins behavior.
 - **execution-health is activity-only.** True broker/exchange connection-health needs new in-memory state in `LiveBackend`/exchange clients — a separate later phase.
