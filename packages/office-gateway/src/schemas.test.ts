@@ -62,3 +62,33 @@ describe('OfficeEvent schema', () => {
     expect(() => officeEventSchema.parse({ type: 'unknown_event', ts: '2024-01-01T00:00:00Z' })).toThrow();
   });
 });
+
+describe('phase-3 contract widening', () => {
+  it('accepts a backtest with null metrics + null descriptors', () => {
+    const parsed = backtestSummarySchema.parse({
+      id: 'b1', strategy: null, symbol: null, period: null,
+      pnlPct: null, sharpe: null, winRatePct: null, maxDrawdownPct: null,
+    });
+    expect(parsed.pnlPct).toBeNull();
+    expect(parsed.strategy).toBeNull();
+  });
+
+  it('still accepts a fully-populated backtest', () => {
+    const parsed = backtestSummarySchema.parse({
+      id: 'b2', strategy: 'mr', symbol: 'BTC', period: '30d',
+      pnlPct: 4.2, sharpe: 1.1, winRatePct: 55, maxDrawdownPct: -8,
+    });
+    expect(parsed.pnlPct).toBe(4.2);
+  });
+
+  it('round-trips InfraStatus.sources', () => {
+    const parsed = infraStatusSchema.parse({
+      services: [], queues: [], lastSync: '2026-06-14T00:00:00.000Z',
+      sources: [
+        { domain: 'office-server', state: 'live', detail: 'ok' },
+        { domain: 'knowledge', state: 'gap', detail: 'source not connected yet' },
+      ],
+    });
+    expect(parsed.sources?.[1]?.state).toBe('gap');
+  });
+});

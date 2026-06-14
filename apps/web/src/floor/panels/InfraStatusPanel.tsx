@@ -21,6 +21,17 @@ export function InfraStatusPanel({ onClose }: { onClose: () => void }) {
           {res.data.queues.map((qd) => (
             <div key={qd.name} className="row"><span>{qd.name}</span><span className="tag">{qd.depth}</span></div>
           ))}
+          {res.data.sources && res.data.sources.length > 0 && (
+            <>
+              <h3>Sources</h3>
+              {res.data.sources.map((src) => (
+                <div key={src.domain} className="row">
+                  <span>{src.domain}</span>
+                  <span className="panel__state">{src.state}{src.detail ? ` (${src.detail})` : ''}</span>
+                </div>
+              ))}
+            </>
+          )}
           <p className="panel__state">last sync {res.data.lastSync}</p>
         </>
       )}

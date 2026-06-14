@@ -9,6 +9,7 @@ import type { OfficeReadConnector } from './connector/OfficeReadConnector';
 import { FixtureOfficeReadConnector } from './connector/FixtureOfficeReadConnector';
 import { OfficeEventBus } from './events/OfficeEventBus';
 import { handleOperatorMessage } from './operator/responder';
+import type { OperatorResponder } from './operator/TradingLabOperatorResponder';
 
 const nowIso = (): string => new Date().toISOString();
 
@@ -16,6 +17,7 @@ export interface OfficeAppDeps {
   connector: OfficeReadConnector;
   bus: OfficeEventBus;
   config: OfficeServerConfig;
+  operatorResponder?: OperatorResponder;
 }
 
 export function createOfficeApp(deps: OfficeAppDeps) {
@@ -39,7 +41,8 @@ export function createOfficeApp(deps: OfficeAppDeps) {
     if (!parsed.success) {
       return c.json({ error: { code: 'bad_request', message: 'invalid operator message' } }, 400);
     }
-    return c.json(handleOperatorMessage(parsed.data, deps.bus));
+    const respond: OperatorResponder = deps.operatorResponder ?? ((m, b) => handleOperatorMessage(m, b));
+    return c.json(respond(parsed.data, deps.bus));
   });
 
   app.get(
