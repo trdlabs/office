@@ -6,6 +6,20 @@ const ID_MAP: Record<LabAgentId, string> = {
 };
 export const mapAgentId = (id: LabAgentId): string => ID_MAP[id];
 
+// Reverse map: office agent id → trading-lab agent id. Office agents with no lab source → null.
+const OFFICE_TO_LAB: Record<string, LabAgentId> = {
+  boss: 'system',
+  analyst: 'analyst',
+  researcher: 'researcher',
+  critic: 'critic',
+  builder: 'builder',
+};
+/** Office floor agents with NO trading-lab source (documented gap) — surfaced as honest idle. */
+export const NO_LAB_SOURCE_AGENTS = ['evaluator', 'perf-monitor'] as const;
+export function mapOfficeAgentIdToLab(officeId: string): LabAgentId | null {
+  return OFFICE_TO_LAB[officeId] ?? null;
+}
+
 // per-agent "busy" flavor for the working lifecycle
 const WORKING_FLAVOR: Record<string, AgentStatus> = { critic: 'reviewing', builder: 'running' };
 export function mapAgentStatus(labId: LabAgentId, lifecycle: LabLifecycle): AgentStatus {

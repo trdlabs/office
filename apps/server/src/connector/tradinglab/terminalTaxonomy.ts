@@ -1,7 +1,7 @@
 // taskType-prefix → confirmed task-completion event `type`s.
-// PROVISIONAL until confirmed by the calibration procedure below. An EMPTY successTypes for a
-// matched prefix means "terminal not confirmed" → the ConversationFollower (M3) degrades honestly
-// (streams correlated deltas, finalizes via guard with "terminal status could not be confirmed").
+// Confirmed against trading-lab source via the calibration procedure. An EMPTY successTypes for a
+// matched prefix means the follower degrades honestly
+// (streams correlated deltas, finalizes via guard timeout with "live progress stream ended").
 export interface TerminalRule {
   prefixes: string[];
   successTypes: string[];

@@ -27,7 +27,7 @@ export function createTradingLabWiring(config: OfficeServerConfig, deps: Trading
     requestTimeoutMs: config.tradingLab.requestTimeoutMs,
     fetchImpl: deps.fetchImpl,
   });
-  const read = new TradingLabReadConnector(client);
+  const read = new TradingLabReadConnector(client, deps.now);
   const bridge = new TradingLabStreamBridge({
     url: config.tradingLab.readUrl,
     readToken: config.tradingLab.readToken,

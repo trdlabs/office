@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mapAgentId, mapAgentStatus, mapAgentStatuses, mapAgentActivity, mapHypothesis, mapBacktest } from './mappers';
+import { mapAgentId, mapAgentStatus, mapAgentStatuses, mapAgentActivity, mapHypothesis, mapBacktest, mapOfficeAgentIdToLab, NO_LAB_SOURCE_AGENTS } from './mappers';
 import type { LabAgentActivity, LabAgentSummary, LabBacktest, LabHypothesisListItem } from './labDtos';
 
 describe('agent id + status mapping', () => {
@@ -47,6 +47,19 @@ describe('backtest mapping (null-honest, winRate x100)', () => {
       id: 'b1', strategy: null, symbol: null, period: null,
       pnlPct: 4.2, sharpe: null, winRatePct: 55, maxDrawdownPct: -8,
     });
+  });
+});
+
+describe('office → lab reverse id mapping', () => {
+  it('maps boss → system and identity for the lab-sourced agents', () => {
+    expect(mapOfficeAgentIdToLab('boss')).toBe('system');
+    expect(mapOfficeAgentIdToLab('analyst')).toBe('analyst');
+    expect(mapOfficeAgentIdToLab('builder')).toBe('builder');
+  });
+  it('returns null for office agents with no lab source', () => {
+    expect(mapOfficeAgentIdToLab('evaluator')).toBeNull();
+    expect(mapOfficeAgentIdToLab('perf-monitor')).toBeNull();
+    expect(NO_LAB_SOURCE_AGENTS).toEqual(['evaluator', 'perf-monitor']);
   });
 });
 
