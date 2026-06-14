@@ -545,7 +545,7 @@ describe('TradingLabHttpClient', () => {
     const fetchImpl = vi.fn(async () => ok({ data: [], page: { nextCursor: null, limit: 20 } }));
     const client = new TradingLabHttpClient({ ...cfg, fetchImpl });
     await client.getHypotheses();
-    const [url, init] = fetchImpl.mock.calls[0];
+    const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
     expect(String(url)).toBe('http://lab:3100/v1/hypotheses');
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer secret');
   });
@@ -572,7 +572,7 @@ describe('TradingLabHttpClient', () => {
     const fetchImpl = vi.fn(async () => ok({ status: 'ok' }));
     const client = new TradingLabHttpClient({ ...cfg, fetchImpl });
     await client.getHealthz();
-    const [, init] = fetchImpl.mock.calls[0];
+    const [, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
     expect((init.headers as Record<string, string>).Authorization).toBeUndefined();
   });
 });
@@ -1980,7 +1980,7 @@ describe('TradingLabChatConnector', () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ kind: 'task_created', sessionId: 's', taskId: 't1', taskType: 'research.run_cycle', status: 'queued' }), { status: 200 }));
     const c = new TradingLabChatConnector({ ...cfg, fetchImpl });
     const r = await c.send({ message: 'hi', sessionId: 's' });
-    const [url, init] = fetchImpl.mock.calls[0];
+    const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
     expect(String(url)).toBe('http://lab:3000/chat/messages');
     expect(init.method).toBe('POST');
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer ct');

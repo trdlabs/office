@@ -89,6 +89,6 @@ describe('phase-3 contract widening', () => {
         { domain: 'knowledge', state: 'gap', detail: 'source not connected yet' },
       ],
     });
-    expect(parsed.sources?.[1].state).toBe('gap');
+    expect(parsed.sources?.[1]?.state).toBe('gap');
   });
 });

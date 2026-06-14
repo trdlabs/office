@@ -11,7 +11,7 @@ describe('TradingLabHttpClient', () => {
     const fetchImpl = vi.fn(async () => ok({ data: [], page: { nextCursor: null, limit: 20 } }));
     const client = new TradingLabHttpClient({ ...cfg, fetchImpl });
     await client.getHypotheses();
-    const [url, init] = fetchImpl.mock.calls[0];
+    const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
     expect(String(url)).toBe('http://lab:3100/v1/hypotheses');
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer secret');
   });
@@ -38,7 +38,7 @@ describe('TradingLabHttpClient', () => {
     const fetchImpl = vi.fn(async () => ok({ status: 'ok' }));
     const client = new TradingLabHttpClient({ ...cfg, fetchImpl });
     await client.getHealthz();
-    const [, init] = fetchImpl.mock.calls[0];
+    const [, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
     expect((init.headers as Record<string, string>).Authorization).toBeUndefined();
   });
 });
