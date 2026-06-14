@@ -9,6 +9,9 @@ import type {
   botHealthSchema,
   knowledgeEntrySchema,
   infraServiceSchema,
+  infraSourceDomainSchema,
+  infraSourceStateSchema,
+  infraSourceSchema,
   infraStatusSchema,
   operatorMessageSchema,
   operatorMessageAcceptedSchema,
@@ -24,6 +27,9 @@ export type BacktestSummary = z.infer<typeof backtestSummarySchema>;
 export type BotHealth = z.infer<typeof botHealthSchema>;
 export type KnowledgeEntry = z.infer<typeof knowledgeEntrySchema>;
 export type InfraService = z.infer<typeof infraServiceSchema>;
+export type InfraSourceDomain = z.infer<typeof infraSourceDomainSchema>;
+export type InfraSourceState = z.infer<typeof infraSourceStateSchema>;
+export type InfraSource = z.infer<typeof infraSourceSchema>;
 export type InfraStatus = z.infer<typeof infraStatusSchema>;
 export type OperatorMessage = z.infer<typeof operatorMessageSchema>;
 export type OperatorMessageAccepted = z.infer<typeof operatorMessageAcceptedSchema>;

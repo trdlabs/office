@@ -55,6 +55,13 @@ export const INFRA: InfraStatus = {
     { name: 'ingest', depth: 0 },
   ],
   lastSync: '09:41:30',
+  sources: [
+    { domain: 'office-server', state: 'live', detail: 'office server' },
+    { domain: 'trading-lab-read-api', state: 'fixture', detail: 'fixture data' },
+    { domain: 'trading-lab-stream', state: 'fixture', detail: 'simulated events' },
+    { domain: 'knowledge', state: 'fixture', detail: 'sample knowledge' },
+    { domain: 'bot-health', state: 'fixture', detail: 'sample bot health' },
+  ],
 };
 
 // Re-export AgentStatus so consumers can build typed status data from one import.

@@ -28,13 +28,13 @@ export const hypothesisSchema = z.object({
 
 export const backtestSummarySchema = z.object({
   id: z.string(),
-  strategy: z.string(),
-  symbol: z.string(),
-  period: z.string(),
-  pnlPct: z.number(),
-  sharpe: z.number(),
-  winRatePct: z.number(),
-  maxDrawdownPct: z.number(),
+  strategy: z.string().nullable(),
+  symbol: z.string().nullable(),
+  period: z.string().nullable(),
+  pnlPct: z.number().nullable(),
+  sharpe: z.number().nullable(),
+  winRatePct: z.number().nullable(),
+  maxDrawdownPct: z.number().nullable(),
 });
 
 export const botHealthSchema = z.object({
@@ -54,10 +54,26 @@ export const knowledgeEntrySchema = z.object({
 });
 
 export const infraServiceSchema = z.object({ name: z.string(), up: z.boolean(), detail: z.string() });
+
+export const infraSourceDomainSchema = z.enum([
+  'office-server',
+  'trading-lab-read-api',
+  'trading-lab-stream',
+  'knowledge',
+  'bot-health',
+]);
+export const infraSourceStateSchema = z.enum(['live', 'degraded', 'error', 'gap', 'fixture']);
+export const infraSourceSchema = z.object({
+  domain: infraSourceDomainSchema,
+  state: infraSourceStateSchema,
+  detail: z.string(),
+});
+
 export const infraStatusSchema = z.object({
   services: z.array(infraServiceSchema),
   queues: z.array(z.object({ name: z.string(), depth: z.number() })),
   lastSync: z.string(),
+  sources: z.array(infraSourceSchema).optional(),
 });
 
 export const operatorMessageSchema = z.object({
