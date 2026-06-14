@@ -2,15 +2,17 @@ import { serve } from '@hono/node-server';
 import type { OfficeEvent } from '@trading-office/office-gateway';
 import { createOfficeApp } from './app';
 import { loadConfig } from './config';
-import { buildConnector } from './connector/buildConnector';
+import { createTradingLabWiring } from './connector/createTradingLabWiring';
+import { FixtureOfficeReadConnector } from './connector/FixtureOfficeReadConnector';
 import { OfficeEventBus } from './events/OfficeEventBus';
 
 const nowIso = (): string => new Date().toISOString();
 
 const config = loadConfig();
 const bus = new OfficeEventBus();
-const connector = buildConnector(config);
-const stopProducer = connector.start((e) => bus.publish(e));
+const wiring = config.connectorMode === 'trading-lab' ? createTradingLabWiring(config) : null;
+const connector = wiring ? wiring.connector : new FixtureOfficeReadConnector(config);
+const stopConnector = connector.start((e) => bus.publish(e));
 const heartbeat = setInterval(() => {
   const e: OfficeEvent = { type: 'heartbeat', ts: nowIso() };
   bus.publish(e);
@@ -24,7 +26,7 @@ injectWebSocket(server);
 
 const shutdown = (): void => {
   clearInterval(heartbeat);
-  stopProducer();
+  stopConnector();
   server.close();
   process.exit(0);
 };
