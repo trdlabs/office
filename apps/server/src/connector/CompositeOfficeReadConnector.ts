@@ -4,12 +4,14 @@ import type {
 } from '@trading-office/office-gateway';
 import type { TradingLabReadConnector } from './tradinglab/TradingLabReadConnector';
 import type { InfraAggregator } from './InfraAggregator';
+import type { PlatformMonitoringConnector } from './platform/PlatformMonitoringConnector';
 
 export interface CompositeDeps {
   read: Pick<TradingLabReadConnector, 'getAgentStatuses' | 'getAgentActivity' | 'getHypotheses' | 'getBacktests'>;
   infra: Pick<InfraAggregator, 'getInfraStatus'>;
   /** M2 injects the real SSE bridge; M1 passes a no-op. */
   startBridge: (emit: (e: OfficeEvent) => void) => () => void;
+  platform?: Pick<PlatformMonitoringConnector, 'getBotHealth'>;
 }
 
 export class CompositeOfficeReadConnector implements OfficeReadConnector {
@@ -22,7 +24,9 @@ export class CompositeOfficeReadConnector implements OfficeReadConnector {
 
   // Honest gaps — no fixtures in trading-lab mode.
   async getKnowledge(): Promise<KnowledgeEntry[]> { return []; }
-  async getBotHealth(): Promise<BotHealth[]> { return []; }
+  async getBotHealth(): Promise<BotHealth[]> {
+    return this.deps.platform ? this.deps.platform.getBotHealth() : [];
+  }
 
   getInfraStatus(): Promise<InfraStatus> { return this.deps.infra.getInfraStatus(); }
 
