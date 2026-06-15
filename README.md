@@ -1,76 +1,174 @@
-# trading-office
+# Trading Office
 
-AI Office Shell / Control Room for multiple agent systems.
+> Визуальная диспетчерская (control room) для агентных торговых систем.
+> Read-only: офис ничего не исполняет — он показывает.
 
-`trading-office` is a visual frontend / control-room layer. It has **no execution
-authority**: `trading-platform` stays the execution/data authority, `trading-lab`
-is the first connected agent system ("first floor").
+![Trading Lab · Research Floor](docs/screenshot.png)
 
-## Phases
+## Что это такое
 
-- **Phase 0 — Office Visual Builder Kit** (frozen foundation): a reusable visual
-  constructor for pixel-art office floors, plus one reviewable example floor.
+**Trading Office** — это pixel-art «офис», в котором каждый AI-агент торговой
+системы превращается в спрайт за рабочим столом с живым статусом над головой
+(`running…`, `thinking…`, `backtesting…`, `reviewing…`). Это витрина и пульт
+наблюдения поверх других систем, а не ещё одна торговая система.
 
-  ```text
-  Tiled map → scene schema / semantic config → PixiJS renderer → React preview wrapper
-  ```
+Ключевой принцип — **no execution authority**: у офиса нет прав на исполнение.
+Данные и торговлю держат внешние сервисы:
 
-- **Phase 1 — Application Shell** (current): a production-facing app (`apps/web`)
-  around the kit — an outside establishing screen, mock login, and the Trading
-  Lab floor with a real panel router. **Mock-first**: no backend, no real auth,
-  **no execution authority**. Design spec + implementation plan live under
-  `docs/superpowers/`.
+- `trading-platform` — источник истины по исполнению и данным;
+- `trading-lab` — первая подключённая агентная система, её агенты живут на
+  первом «этаже» офиса (Trading Lab · Research Floor).
 
-## Layout
+Офис только читает их состояние и рисует его. Ни одной команды на запись в нём нет.
 
-| Path | What it is |
+## Что он умеет
+
+- **Этаж с агентами.** Семь агентов Trading Lab — Analyst, Builder, Researcher,
+  Boss, Evaluator, Critic, Monitor — каждый за своим столом, со своим статусом
+  в реальном времени.
+- **Панели справа.** Клик по агенту или объекту открывает панель: гипотезы,
+  бэктесты, база знаний, здоровье инфраструктуры, лог-активность.
+- **Оператор-чат.** Чат с агентами в правом доке. В mock-режиме он инертный
+  (заглушка с имитацией ответа), в режиме `trading-lab` — проксируется
+  в реальный чат-API лаборатории.
+- **Поток событий.** Один read-only WebSocket гонит статусы, реплики чата
+  и heartbeat; фронт переподключается с backoff.
+- **Мониторинг платформы.** В режиме `trading-lab` офис дополнительно
+  показывает бот-раны и инфра-домены `trading-platform` (ops read API).
+- **Два режима оформления.** Переключатель в шапке: «Day Office» (дневной офис)
+  и «Night Control Room» (ночная диспетчерская).
+- **Деградация вместо падений.** Сбой апстрима становится видимым типизированным
+  статусом источника (панель Infra), а не HTTP 500 на весь дашборд. Токены
+  чтения живут только на сервере и никогда не попадают ни в браузер, ни в логи.
+
+## Архитектура
+
+```text
+Браузер — React + PixiJS                      apps/web
+   │   HTTP-снимки + один read-only WebSocket
+   ▼
+Office Gateway — Hono, read-only              apps/server
+   │
+   ├── фикстуры (детерминированные демо-данные)        ← режимы mock / connected
+   └── trading-lab read/chat API
+       + (опционально) trading-platform ops read API   ← режим trading-lab
+```
+
+PixiJS рисует только сам этаж. Внешний экран, логин, шапка, панели
+и маршрутизация — обычный React/DOM. Единственная граница данных — read-only
+интерфейс `OfficeGateway`.
+
+### Структура репозитория
+
+| Путь | Что это |
 | --- | --- |
-| `apps/web/` | **Phase 1 app shell**: outside scene, mock login, floor + panel router (consumes the kit + floor package) |
-| `packages/office-visual-kit/` | The kit: PixiJS v8 renderer core, Tiled loader, scene schema, asset registry, interaction, camera, React wrapper |
-| `packages/trading-lab-floor/` | Single source of truth for the Trading Lab floor: scene config, Tiled maps, assets, generators |
-| `examples/trading-lab-research-floor/` | Technical preview of the floor (DebugCard overlay) — consumes `packages/trading-lab-floor` |
-| `packages/office-visual-kit/docs/` | Kit documentation incl. Tiled conventions and the Superpowers handoff |
-| `docs/superpowers/` | Phase 1 design spec + implementation plan |
+| `apps/web/` | Фронт-приложение: внешний экран города, mock-логин, этаж и роутер панелей |
+| `apps/server/` | Office Gateway (Hono): HTTP-снимки + WebSocket-поток поверх коннекторов |
+| `packages/office-gateway/` | Контракт шлюза: DTO, zod-схемы, дескрипторы маршрутов, схема `OfficeEvent` (чистый, безопасный для браузера) |
+| `packages/office-fixtures/` | Общие детерминированные демо-данные |
+| `packages/office-visual-kit/` | Движок рендера: ядро PixiJS v8, загрузчик Tiled, схема сцены, камера, React-обёртка |
+| `packages/trading-lab-floor/` | Единый источник этажа Trading Lab: конфиг сцены, карты Tiled, ассеты, генераторы |
+| `examples/trading-lab-research-floor/` | Технический превью этажа (оверлей DebugCard) |
+| `docs/superpowers/` | Спеки и планы по фазам (1 → 4b) |
 
-## Quick start
+### API шлюза
+
+Все маршруты read-only; пути с префиксом `/api/office`.
+
+| Метод | Путь | Отдаёт |
+| --- | --- | --- |
+| `GET` | `/agents/statuses` | статусы агентов на этаже |
+| `GET` | `/hypotheses` | гипотезы |
+| `GET` | `/backtests` | бэктесты |
+| `GET` | `/knowledge` | базу знаний |
+| `GET` | `/bots` | бот-раны платформы (режим `trading-lab`) |
+| `GET` | `/infra` | состояние источников и инфраструктуры |
+| `POST` | `/operator/messages` | сообщение оператора в чат |
+| `WS` | `/events` | поток событий: статусы, чат, heartbeat |
+
+## Режимы запуска
+
+| Режим | Команда | Что под капотом |
+| --- | --- | --- |
+| **mock** (по умолчанию) | `npm run dev` | только фронт + фикстуры прямо в браузере, без сервера |
+| **connected** | `npm run dev:connected` | фронт + gateway (`apps/server`) на фикстурах |
+| **trading-lab** | env + `npm run dev:connected` | gateway ходит в реальные API `trading-lab` (и опционально `trading-platform`) |
+
+## Запуск
+
+Требования: **Node ≥ 20.19**.
+
+### Быстрый старт (mock)
 
 ```bash
 npm install
-npm run dev          # the app shell (apps/web) → http://localhost:5174
-npm run dev:preview  # the kit floor preview → http://localhost:5173
+npm run dev          # → http://localhost:5174
 ```
 
-Open the app at http://localhost:5174: click the building door to sign in
-(mock), then explore the Trading Lab floor — click agents and objects to open
-panels in the right dock; the entrance door returns you to the lobby.
+Откройте http://localhost:5174, кликните по двери здания, чтобы войти (mock-логин),
+и осмотрите этаж Trading Lab: кликайте по агентам и объектам — справа открываются
+панели; дверь у входа возвращает в лобби.
 
-Other commands:
+Превью самого этажа (без приложения, с дебаг-оверлеем):
 
 ```bash
-npm run build         # typecheck + build all workspaces
-npm test              # unit tests for the app's runtime/session/registry logic
-npm run generate      # regenerate the floor's pixel assets + Tiled maps
-npm run verify:assets # fail if any consumer's synced floor assets drifted
+npm run dev:preview  # → http://localhost:5173
 ```
 
-## Visual style & licensing
+### Подключённый режим (фронт + сервер на фикстурах)
 
-The visual style ("Retro Pixel AI Research Tower") is original. Environment
-pixel assets are generated by deterministic scripts in
-`packages/trading-lab-floor/tools/` and are CC0-equivalent. Agent sprites are
-composed from real Universal LPC Spritesheet Character Generator layers
-(CC-BY-SA 3.0; attribution under
-`packages/trading-lab-floor/public/assets/third-party/lpc/`). Reference
-screenshots were used only as private mood references and were not copied into
-the final layout, characters, or assets.
+```bash
+npm run dev:connected   # web → :5174, gateway → :8787
+```
 
-Code and generated assets are licensed under MIT — see `LICENSE`.
-See `packages/office-visual-kit/docs/asset-guidelines.md` for the full asset
-policy.
+Фронт берёт `apps/web/.env.connected` (`VITE_OFFICE_MODE=connected`), сервер
+стартует в режиме `fixture`. Удобно проверять HTTP/WebSocket-контур без реального
+`trading-lab`.
 
-## What is intentionally NOT here (Phase 1)
+### Боевой режим (trading-lab)
 
-No backend (Hono), no Postgres, no real auth, no real `trading-lab` API, no
-SSE/WebSocket, **no execution authority**, no direct `trading-platform` access.
-The app talks only to a mock `OfficeGateway`; live data and a real gateway are a
-later phase. The example floor remains a frozen-foundation preview.
+Сервер читает конфиг из переменных окружения процесса (автозагрузки `.env` нет —
+переменные нужно экспортировать). Полный список — в `apps/server/.env.example`.
+
+```bash
+# gateway → реальный trading-lab
+export OFFICE_CONNECTOR_MODE=trading-lab
+export TRADING_LAB_READ_URL=http://localhost:3100
+export TRADING_LAB_READ_TOKEN=<токен чтения>
+export TRADING_LAB_CHAT_URL=http://localhost:3000     # опционально — оператор-чат
+export TRADING_LAB_CHAT_TOKEN=<токен чата>            # опционально
+
+# опционально — мониторинг платформы (только в режиме trading-lab)
+export OFFICE_PLATFORM_ENABLED=true
+export TRADING_PLATFORM_READ_URL=http://localhost:8839
+export TRADING_PLATFORM_READ_TOKEN=<токен ops-read>
+
+npm run dev:connected
+```
+
+Без `TRADING_LAB_READ_URL` и `TRADING_LAB_READ_TOKEN` сервер в этом режиме
+осознанно падает на старте — чтобы не притворяться живым на пустых данных.
+
+### Прочие команды
+
+```bash
+npm run build         # typecheck + сборка всех workspace-пакетов
+npm test              # юнит-тесты сервера и фронта
+npm run generate      # перегенерировать пиксельные ассеты и карты Tiled
+npm run verify:assets # упасть, если синхронизированные ассеты этажа разъехались
+```
+
+## Внешний вид и лицензия
+
+Визуальный стиль («Retro Pixel AI Research Tower») оригинальный. Ассеты окружения
+генерируются детерминированными скриптами в `packages/trading-lab-floor/tools/`
+(эквивалент CC0). Спрайты агентов собраны из слоёв Universal LPC Spritesheet
+Character Generator (CC-BY-SA 3.0; атрибуция —
+в `packages/trading-lab-floor/public/assets/third-party/lpc/`).
+
+Код и сгенерированные ассеты — под лицензией MIT, см. [`LICENSE`](LICENSE).
+Полная политика по ассетам — в `packages/office-visual-kit/docs/asset-guidelines.md`.
+
+---
+
+<p align="center"><img src="docs/screenshot-outside.png" alt="Вход в Trading Office — пиксельный город" width="720"></p>
