@@ -41,9 +41,11 @@ function Street({ pal }: { pal: CityPalette }) {
     if (x > CX - 40 && x < CX + 40) continue; // leave a gap for the crosswalk
     els.push(<rect key={`lane${x}`} x={x} y={GROUND_Y + 26} width={11} height={2} fill={pal.roadLine} />);
   }
-  // crosswalk in front of the tower
-  for (let x = CX - 34; x <= CX + 30; x += 8) {
-    els.push(<rect key={`cw${x}`} x={x} y={GROUND_Y + 11} width={4} height={SCENE_H - (GROUND_Y + 11)} fill={pal.crosswalk} opacity={0.85} />);
+  // crosswalk in front of the tower — zebra stripes run across the road (parallel to traffic)
+  const cwX = CX - 34;
+  const cwW = 68;
+  for (let y = GROUND_Y + 13; y < SCENE_H - 2; y += 8) {
+    els.push(<rect key={`cw${y}`} x={cwX} y={y} width={cwW} height={4} fill={pal.crosswalk} opacity={0.85} />);
   }
   return <g aria-hidden="true">{els}</g>;
 }
