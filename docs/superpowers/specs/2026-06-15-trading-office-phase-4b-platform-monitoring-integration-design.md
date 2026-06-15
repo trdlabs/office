@@ -87,7 +87,10 @@ The `PlatformHttpClient` parses responses against **hand-mirrored input types** 
 Actual response shapes (field-for-field from `trading-platform/src/operations/dto.ts`):
 
 ```ts
-// GET /ops/runs  (pre-035, real; the bot-rows source)
+// GET /ops/runs?mode=...  → a PAGE ENVELOPE (NOT a raw array)
+interface PageEnvelope<T> { items: T[]; nextCursor: string | null; asOf: number; window: unknown; freshness: unknown; }
+//   `window` / `freshness`: mirror the EXACT shapes from trading-platform dto.ts at implementation.
+//   Office consumes `items` (primary) and MAY use `freshness`/`asOf` to refine the bot-health source-state.
 interface BotRunRecord { runId: string; mode: 'live'|'paper'|'backtest';
   status: 'running'|'finished'|'crashed'|'aborted';
   strategy: { name: string; version: string };
@@ -139,7 +142,7 @@ Wraps `fetch`: injects `Authorization: Bearer <TRADING_PLATFORM_READ_TOKEN>`, se
 - 401/403 → `OfficeError{ code:'upstream_unauthorized' }`
 - 4xx → `OfficeError{ code:'upstream_bad_request' }`
 
-Exposes typed getters: `getRuns()`, `getRuntimeHealth()`, `getMarketHealth()`, `getExecutionHealth()`, `getCoverage()`, `getDiscover()`. Each parses against `platformDtos.ts`.
+Exposes typed getters: `getRuns(mode)` (parses the `PageEnvelope<BotRunRecord>`, returns `items` + envelope meta), `getRuntimeHealth()`, `getMarketHealth()`, `getExecutionHealth()`, `getCoverage()`, `getDiscover()`. Each parses against `platformDtos.ts`.
 
 ### 6.2 `PlatformMonitoringConnector` (read-only)
 
@@ -150,7 +153,7 @@ interface PlatformMonitoringConnector {
 }
 ```
 
-- **`getBotHealth()`** — `GET /ops/runs`; filter `mode != 'backtest'`; map each run (§7.1). On client error → returns `[]` (the `bot-health` source-state, computed in `getPlatformInfra`, conveys *why*).
+- **`getBotHealth()`** — `GET /ops/runs?mode=live` **and** `GET /ops/runs?mode=paper` (platform-side filtering is the **primary** selection), merge the two envelopes' `items`; map each run (§7.1). Client-side `mode != 'backtest'` remains only as **defense-in-depth**, not the selection mechanism. First page per mode (bot counts are small; `nextCursor` exists but is not paginated in v1). If **either** mode query fails (transport/401/bad) → returns `[]` and `bot-health` is `error` (never a partial shown as complete). The panel must not misread `[]` as "no bots" — §8.
 - **`getPlatformInfra()`** — fetches each endpoint **independently** and derives one `InfraSource` per aspect from **its own** result (§7.2). Adds a `platform-ops-api` service (up/down from `/ops/discover` reachability). Never throws; a single failed endpoint degrades only its own source.
 
 ### 6.3 `createPlatformWiring`
@@ -172,7 +175,7 @@ Mirrors `createTradingLabWiring`: builds `PlatformHttpClient` from `config.platf
 
 ### 7.1 Bot rows — `BotRunRecord` → office `BotHealth`
 
-Filter `mode != 'backtest'` (live + paper bots only; backtests are not live bots).
+Source = merged `items` from `GET /ops/runs?mode=live` + `?mode=paper` (platform-side filtering is the **primary** selection; client-side `mode != 'backtest'` is defense-in-depth only).
 
 | office `BotHealth` | source |
 |---|---|
@@ -217,10 +220,12 @@ Filter `mode != 'backtest'` (live + paper bots only; backtests are not live bots
 | `/ops/runs` unreachable / timeout / network | `error` | `[]` |
 | `/ops/runs` 401/403 | `error` ("unauthorized") | `[]` |
 | `/ops/runs` bad response / mapping failure | `error` | `[]` |
-| `/ops/runs` **200 with rows** | `live` | mapped rows |
-| `/ops/runs` **200, no live/paper rows** | `live` | `[]` (valid "no active bot runs") |
+| both `?mode=live` + `?mode=paper` **200 with rows** | `live` | merged mapped rows |
+| both `?mode=live` + `?mode=paper` **200, no rows** | `live` | `[]` (valid "no active bot runs") |
 
-**Empty list is NOT a gap.** A successful `200` with zero non-backtest runs is the honest "no active bots" state: `bot-health = live`, rows `[]`, and the panel says so (§8).
+Both mode queries must return `200` for `bot-health = live`; if **either** fails → `bot-health = error` and `getBotHealth() = []` (never a partial shown as complete). Optionally, if the envelope's `freshness`/`asOf` indicates stale data, `bot-health → degraded` (rows still shown) — confirm the exact `freshness` shape at implementation (§14).
+
+**Empty list is NOT a gap.** A successful `200` (both modes) with zero runs is the honest "no active bots" state: `bot-health = live`, rows `[]`, and the panel says so (§8). A platform failure is `gap`/`error`, **never** rendered as empty (§8).
 
 ### 7.4 `/ops/discover` is NOT a global gate (best-effort per-endpoint)
 
@@ -237,12 +242,14 @@ Additive only; all via zod in `packages/office-gateway/src/schemas.ts` (SSOT) wi
 1. **`infraSourceDomainSchema` widened** — add `'platform-ops-api'`, `'platform-runtime'`, `'platform-market'`, `'platform-execution'`, `'platform-coverage'` to the existing five. No other schema change; `botHealthSchema` and `infraSourceStateSchema` unchanged.
 2. **No route changes**; no new DTO. `InfraStatusPanel` renders `sources[]` generically — new domains appear automatically with no panel change.
 
-**`BotHealthPanel` (minimal rendering states, not a redesign):** key off the `bot-health` source-state + the rows:
-- `gap` → "Bot runtime monitoring is not connected yet";
-- `error` → "Bot runtime monitoring unavailable — platform unreachable";
-- `degraded` → stale banner + rows;
-- `live` + rows → rows;
-- `live` + empty → "No active bot runs".
+**`BotHealthPanel` (minimal rendering states, not a redesign):** derive display state from **both** the rows AND the `bot-health` source-state (`sourceState(infra, 'bot-health')`) — **never from rows alone**:
+- `gap` → "Bot runtime monitoring is not connected yet" (regardless of rows);
+- `error` → "Bot runtime monitoring unavailable — platform unreachable" (regardless of rows);
+- `degraded` + rows>0 → stale banner + rows; `degraded` + rows=0 → "Bot runtime data is stale" (**not** "no active bots");
+- `live` + rows>0 → rows;
+- `live` + rows=0 → "No active bot runs".
+
+**"No active bot runs" is shown ONLY for (`bot-health`=`live`, rows=`[]`)** — i.e. only when `/ops/runs` actually returned `200` with zero live/paper runs. Platform disabled / unreachable / timeout / 401 / bad-response (→ `gap`/`error`) must **never** render as "No active bot runs".
 
 `FixtureOfficeReadConnector` and the `INFRA`/`BOTS` fixtures are unchanged (fixture mode has no platform; `sources` is optional/open so it need not list the new domains). A guard test confirms fixtures still satisfy the schemas.
 
@@ -267,20 +274,22 @@ Additive only; all via zod in `packages/office-gateway/src/schemas.ts` (SSOT) wi
 | 401/403 | `upstream_unauthorized`; affected source-states `error` |
 | only `/ops/discover` down, others ok | `platform-ops-api`=`degraded`/`error`; other domains from their own endpoints (no suppression) |
 | `/ops/health/market` (or coverage) `unavailable` (default) | `platform-market`/`platform-coverage`=`gap` (honest); auto-`live` when operator enables `MARKET_HEALTH_PERSIST` — **no office change** |
-| `/ops/runs` 200, empty | `bot-health`=`live`, rows `[]`, panel "No active bot runs" |
+| `/ops/runs` (both modes) 200, empty | `bot-health`=`live`, rows `[]`, panel "No active bot runs" |
+| `/ops/runs` either mode fails (transport/401/bad) | `bot-health`=`error`, `getBotHealth()`=`[]`, panel error message (NOT "no active bots") |
 | malformed DTO / mapping failure (one endpoint) | that source `error`; others unaffected; never throws to the route |
 
-Principle (inherited): **degrade visibly, never mask with fabricated data; empty ≠ gap.**
+Principle (inherited): **degrade visibly, never mask with fabricated data; empty ≠ gap; and a platform failure (`gap`/`error`) is never rendered as an empty "no active bots".**
 
 ---
 
 ## 11. Testing strategy (TDD)
 
 1. **Mappers (unit):** `BotRunRecord`→`BotHealth` (status map, `mode!=backtest` filter, `finished→paused`, uptime/heartbeat string formatting); `availability`×`status`→`InfraSourceState` (full table incl. `down→error`, `unavailable→gap`); coverage worst-of; runtime collection worst-of (incl. `entries:[]`→`gap`).
-2. **`PlatformHttpClient`:** `Authorization: Bearer <token>` sent (assert via fake `fetch`); 401/5xx/network/timeout → mapped `OfficeError`; parses the actual `035` shapes; tolerates missing/optional fields without throwing.
-3. **`getBotHealth`:** rows mapped + filtered; client error → `[]`; **200 empty → `[]` (not an error)**.
+2. **`PlatformHttpClient`:** `Authorization: Bearer <token>` sent (assert via fake `fetch`); 401/5xx/network/timeout → mapped `OfficeError`; parses the actual `035` shapes incl. `getRuns` parsing `PageEnvelope<BotRunRecord>` (`items`/`nextCursor`/`asOf`/`window`/`freshness`) and returning `items`; tolerates missing/optional fields without throwing.
+3. **`getBotHealth`:** queries `?mode=live` **and** `?mode=paper`, merges `items`, maps; **either** query failing → `[]` + `bot-health=error`; **both-200 with zero rows → `[]` + `bot-health=live` (not an error)**; client-side `mode!=backtest` is defense-in-depth.
 4. **`getPlatformInfra`:** each domain from its own endpoint; one endpoint failing → only its source degrades; all-down → `platform-ops-api='error'` + dependents gap/error; **only-discover-down → others preserved**; market/coverage `unavailable`→`gap`.
-5. **`bot-health` source-state:** disabled→gap; unreachable/401/bad→error; 200+rows→live; **200+empty→live** (the empty≠gap rule).
+5. **`bot-health` source-state:** disabled→gap; either-mode-query unreachable/401/bad→error; both-200+rows→live; **both-200+empty→live** (the empty≠gap rule).
+5b. **`BotHealthPanel` false-empty guard (web):** rows=`[]` + `bot-health` ∈ {`gap`,`error`,`degraded`} → renders the gap/error/degraded message, **NOT** "No active bot runs"; only (`live`, `[]`) renders "No active bot runs"; (`degraded`, rows>0) → stale banner + rows.
 6. **Composite:** `getBotHealth` routes to platform when present, `[]` when absent; `getInfraStatus` includes platform sources when wired.
 7. **`InfraAggregator`:** with `platformInfra` → appends platform services+sources and **drops** the hardcoded `bot-health` gap; without → Phase 3 behavior (`bot-health`=gap); `knowledge` always gap.
 8. **Config:** fail-fast when `OFFICE_PLATFORM_ENABLED=true` + `trading-lab` mode without URL/token; flag ignored in fixture mode.
@@ -326,7 +335,7 @@ M1 may ship independently of M2 (bot-health closes without the infra aspects).
 ## 14. Risks & future phases
 
 - **Platform DTO fidelity:** `platformDtos.ts` mirrors the **actual merged `035`** shapes (runtime = collection, no `buildTag`/`botRunId`, idle execution → `unavailable`); mappers degrade on missing/optional fields. A genuine platform-contract defect is escalated as a `trading-platform` follow-up, never hacked around in the office.
-- **`/ops/runs` mapping calibration:** confirm against real data — the `mode != 'backtest'` filter (is `paper` wanted?), `finished→paused`, and whether very old `finished` runs should be filtered by recency. Adjust the mapper in M1, not the schema.
+- **`/ops/runs` envelope + mapping calibration:** selection is primarily via platform `?mode=live`/`?mode=paper` filters merged from `PageEnvelope.items` (client `mode!=backtest` is defense-in-depth). Confirm the exact `window`/`freshness` envelope shapes and whether `freshness`/`asOf` should drive `bot-health → degraded`; confirm `finished→paused`; recency-filter old `finished` runs; `nextCursor` pagination only if bot counts grow. Adjust the mapper in M1, not the schema.
 - **market/coverage default `unavailable`:** honest `gap` until the platform operator runs market-service with `MARKET_HEALTH_PERSIST=true` + `DATABASE_URL`. The office auto-lights-up with **no change** when that lands.
 - **Token coordination:** office holds the raw token; platform stores its `sha256hex` in `OPS_READ_TOKENS` — an operational handshake, not code.
 - **Future (not Phase 4b):** `knowledge` source; true broker connection-health (a `trading-platform` follow-up); richer per-bot detail (positions/trades) only if the control-room scope is deliberately widened.
@@ -337,7 +346,7 @@ M1 may ship independently of M2 (bot-health closes without the infra aspects).
 
 **trading-platform (`035`, mirror field names — do not import):**
 - Response DTOs: `src/operations/dto.ts` (`RuntimeHealthCollection`/`RuntimeHealthEntry`, `MarketServiceHealthSnapshot`, `SourceCoverageSnapshot`, `ExecutionHealthSnapshot`, `OpsCapabilityDescriptor`, `BotRunRecord`).
-- Routes: `src/operations/adapters/http-snapshot.ts` (`/ops/health/runtime|market|execution`, `/ops/coverage`, `/ops/discover`, `/ops/runs`); dispatch `src/operations/dispatch.ts`; catalog `src/operations/handlers/discover.ts`.
+- Routes: `src/operations/adapters/http-snapshot.ts` (`/ops/health/runtime|market|execution`, `/ops/coverage`, `/ops/discover`; `/ops/runs` → `PageEnvelope<BotRunRecord>`, supports `?mode=`); dispatch `src/operations/dispatch.ts`; catalog `src/operations/handlers/discover.ts`.
 - Auth: `src/operations/access/auth.ts` (sha256-hex bearer allowlist); env `OPS_READ_TOKENS`, `OPS_READ_PORT` (default `8839`) in `src/operations/bin/start-ops-read.ts`.
 - Availability classifier: `src/operations/sources/platform-health-snapshot-pg.ts` (`available`/`degraded`/`unavailable`).
 - Spec: `trading-platform/specs/035-platform-health-snapshots/spec.md`.
