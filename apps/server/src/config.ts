@@ -14,6 +14,7 @@ export interface ChatFollowConfig {
   maxDeltas: number;
   bootstrapRetries: number;
   bootstrapIntervalMs: number;
+  completionSummaryEnabled: boolean;
 }
 
 export interface StreamConfig {
@@ -98,6 +99,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): OfficeServerCo
       maxDeltas: num(env, 'OFFICE_CHAT_FOLLOW_MAX_DELTAS', 200),
       bootstrapRetries: num(env, 'OFFICE_CHAT_BOOTSTRAP_RETRIES', 8),
       bootstrapIntervalMs: num(env, 'OFFICE_CHAT_BOOTSTRAP_INTERVAL_MS', 750),
+      completionSummaryEnabled: env.OPERATOR_COMPLETION_SUMMARY !== 'false', // default ON
     },
     stream: {
       reconnectBaseMs: num(env, 'OFFICE_STREAM_RECONNECT_BASE_MS', 1000),
