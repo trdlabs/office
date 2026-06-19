@@ -4,6 +4,7 @@ import type { TradingLabHttpClient } from '../connector/tradinglab/TradingLabHtt
 import type { TradingLabStreamBridge } from '../connector/tradinglab/TradingLabStreamBridge';
 import { successTypesFor, isFailureType } from '../connector/tradinglab/terminalTaxonomy';
 import { isNoiseEventType } from './summaryFilter';
+import { renderCompletionSummary } from './completionSummaryRender';
 
 export interface FollowerIds { operatorMessageId: string; conversationId: string; replyMessageId: string }
 export interface FollowerGuards {
@@ -22,9 +23,10 @@ export interface ConversationFollowerDeps {
    *  waiting for THIS type's terminal, instead of completing the turn. */
   nextTaskType?: string;
   emit: (e: OfficeEvent) => void;
-  client: Pick<TradingLabHttpClient, 'getAgentEvents'>;
+  client: Pick<TradingLabHttpClient, 'getAgentEvents' | 'getCompletionSummary'>;
   bridge: Pick<TradingLabStreamBridge, 'subscribeAppended'>;
   guards: FollowerGuards;
+  completionSummaryEnabled?: boolean; // default true
   now?: () => string;
   sleep?: (ms: number) => Promise<void>;
   schedule?: (ms: number, cb: () => void) => () => void;
@@ -49,7 +51,10 @@ export class ConversationFollower {
     const correlationId = await this.bootstrap();
     if (this.done) return;
     if (!correlationId) {
-      this.finishCompleted('Live task progress is unavailable.');
+      if (!this.done) {
+        this.done = true;
+        await this.finishCompleted('Live task progress is unavailable.');
+      }
       return;
     }
     await this.follow(correlationId);
@@ -76,13 +81,13 @@ export class ConversationFollower {
     return new Promise<void>((resolve) => {
       let unsub: () => void = () => {};
       let cancelIdle: () => void = () => {};
-      const finish = (fn: () => void): void => {
+      const finish = (run: () => void | Promise<void>): void => {
         if (this.done) return;
-        fn();
+        this.done = true;          // set synchronously → no re-entry during any await
         cancelMax();
         cancelIdle();
         unsub();
-        resolve();
+        void Promise.resolve(run()).then(resolve, resolve);
       };
       const resetIdle = (): void => {
         cancelIdle();
@@ -109,7 +114,7 @@ export class ConversationFollower {
             this.emitDelta(e.summary);
             return;
           }
-          finish(() => this.finishCompleted());
+          finish(() => this.finishCompleted(undefined, e.taskId)); // e.taskId = the task that just completed
           return;
         }
         if (!isNoiseEventType(e.type)) {
@@ -137,10 +142,15 @@ export class ConversationFollower {
     });
   }
 
-  private finishCompleted(extra?: string): void {
-    this.done = true;
+  private async finishCompleted(extra?: string, completedTaskId?: string): Promise<void> {
+    let rendered: string | undefined;
+    if ((this.deps.completionSummaryEnabled ?? true) && completedTaskId) {
+      const summary = await this.deps.client.getCompletionSummary(completedTaskId); // null on 404/error
+      if (summary) rendered = renderCompletionSummary(summary);
+    }
     const body = this.accumulated.join('\n');
-    const text = [body, extra].filter(Boolean).join(body && extra ? ' · ' : '') || 'Done.';
+    const fallback = [body, extra].filter(Boolean).join(body && extra ? ' · ' : '') || 'Done.';
+    const text = rendered ?? fallback;
     const reply: OperatorReply = {
       replyMessageId: this.deps.ids.replyMessageId,
       operatorMessageId: this.deps.ids.operatorMessageId,
@@ -159,7 +169,6 @@ export class ConversationFollower {
   }
 
   private finishFailed(message: string): void {
-    this.done = true;
     this.deps.emit({
       type: 'operator_message_failed',
       ts: this.now(),

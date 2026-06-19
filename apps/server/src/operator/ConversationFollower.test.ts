@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { ConversationFollower } from './ConversationFollower';
-import type { LabAgentEvent } from '../connector/tradinglab/labDtos';
+import type { LabAgentEvent, LabCompletionSummary } from '../connector/tradinglab/labDtos';
 import type { OfficeEvent } from '@trading-office/office-gateway';
+import { successTypesFor } from '../connector/tradinglab/terminalTaxonomy';
 
 const ids = { operatorMessageId: 'm1', conversationId: 'c1', replyMessageId: 'r1' };
 const guards = { maxMs: 99999, idleMs: 99999, maxDeltas: 100, bootstrapRetries: 3, bootstrapIntervalMs: 0 };
@@ -13,7 +14,10 @@ function fakeBridge() {
   let cb: ((e: LabAgentEvent) => void) | null = null;
   return { subscribeAppended: (fn: (e: LabAgentEvent) => void) => { cb = fn; return () => { cb = null; }; }, push: (e: LabAgentEvent) => cb?.(e) };
 }
-const clientWith = (data: LabAgentEvent[]) => ({ getAgentEvents: vi.fn(async () => ({ data, page: { nextCursor: null, limit: 20 } })) });
+const clientWith = (data: LabAgentEvent[], getCompletionSummary?: () => Promise<LabCompletionSummary | null>) => ({
+  getAgentEvents: vi.fn(async () => ({ data, page: { nextCursor: null, limit: 20 } })),
+  getCompletionSummary: getCompletionSummary ?? (async () => null),
+});
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
 describe('ConversationFollower', () => {
@@ -231,5 +235,79 @@ describe('ConversationFollower', () => {
     const completed = out.find((e) => e.type === 'operator_message_completed') as Extract<OfficeEvent, { type: 'operator_message_completed' }>;
     expect(completed.reply.text).toMatch(/live progress stream ended/);
     expect(out.some((e) => e.type === 'operator_message_failed')).toBe(false);
+  });
+
+  // ── Task 5: completion summary fetch + render ────────────────────────────
+
+  it('renders the fetched completion summary into the completed reply', async () => {
+    const summary: LabCompletionSummary = {
+      kind: 'research.run_cycle', taskId: 'rc1', status: 'completed',
+      profile: { id: 'p1', coreIdea: 'fade pumps', direction: 'short' },
+      counts: { proposed: 3, validated: 2, rejected: 1, deduped: 0, criticReviews: 2, backtestsEnqueued: 2 },
+      topHypotheses: [], links: { taskId: 'rc1' }, warnings: [],
+    };
+    const bridge = fakeBridge();
+    const out: OfficeEvent[] = [];
+    const successType = successTypesFor('research.run_cycle')[0]; // 'research.run_cycle.completed'
+    const f = new ConversationFollower({
+      ids, taskId: 't1', taskType: 'research.run_cycle', emit: (e) => out.push(e),
+      client: clientWith(
+        [ev({ type: 'research.run_cycle.started', correlationId: 'corr1' })],
+        async () => summary,
+      ) as never,
+      bridge: bridge as never, guards, now: NOW, sleep: async () => {}, schedule: noSchedule,
+    });
+    const p = f.run();
+    await tick();
+    bridge.push(ev({ type: successType, correlationId: 'corr1', taskId: 'rc1', summary: 'done' }));
+    await p;
+    const completed = out.find((e) => e.type === 'operator_message_completed') as Extract<OfficeEvent, { type: 'operator_message_completed' }>;
+    expect(completed).toBeTruthy();
+    expect(completed.reply.text).toContain('Гипотезы');
+    expect(completed.reply.text).not.toBe('Done.');
+  });
+
+  it('falls back to the prior reply when the summary fetch returns null', async () => {
+    const bridge = fakeBridge();
+    const out: OfficeEvent[] = [];
+    const successType = successTypesFor('research.run_cycle')[0];
+    const f = new ConversationFollower({
+      ids, taskId: 't1', taskType: 'research.run_cycle', emit: (e) => out.push(e),
+      client: clientWith(
+        [ev({ type: 'research.run_cycle.started', correlationId: 'corr1' })],
+        async () => null,
+      ) as never,
+      bridge: bridge as never, guards, now: NOW, sleep: async () => {}, schedule: noSchedule,
+    });
+    const p = f.run();
+    await tick();
+    bridge.push(ev({ type: successType, correlationId: 'corr1', taskId: 'rc1', summary: 'done' }));
+    await p;
+    const completed = out.find((e) => e.type === 'operator_message_completed') as Extract<OfficeEvent, { type: 'operator_message_completed' }>;
+    expect(completed).toBeTruthy();
+    expect(completed.reply.text).toBe('Done.'); // no deltas, null summary → fallback
+  });
+
+  it('does not fetch when completionSummaryEnabled is false', async () => {
+    const getSummary = vi.fn(async (): Promise<LabCompletionSummary | null> => null);
+    const bridge = fakeBridge();
+    const out: OfficeEvent[] = [];
+    const successType = successTypesFor('research.run_cycle')[0];
+    const f = new ConversationFollower({
+      ids, taskId: 't1', taskType: 'research.run_cycle', emit: (e) => out.push(e),
+      client: clientWith(
+        [ev({ type: 'research.run_cycle.started', correlationId: 'corr1' })],
+        getSummary,
+      ) as never,
+      bridge: bridge as never, guards, now: NOW, sleep: async () => {}, schedule: noSchedule,
+      completionSummaryEnabled: false,
+    });
+    const p = f.run();
+    await tick();
+    bridge.push(ev({ type: successType, correlationId: 'corr1', taskId: 'rc1', summary: 'done' }));
+    await p;
+    expect(getSummary).not.toHaveBeenCalled();
+    const completed = out.find((e) => e.type === 'operator_message_completed') as Extract<OfficeEvent, { type: 'operator_message_completed' }>;
+    expect(completed.reply.text).toBe('Done.'); // flag off → fallback
   });
 });

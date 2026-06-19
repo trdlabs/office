@@ -19,9 +19,10 @@ export interface StartFollowArgs { ids: FollowerIds; taskId: string; taskType?: 
 
 export interface TradingLabOperatorResponderDeps {
   chat: Pick<TradingLabChatConnector, 'send'>;
-  client: Pick<TradingLabHttpClient, 'getAgentEvents'>;
+  client: Pick<TradingLabHttpClient, 'getAgentEvents' | 'getCompletionSummary'>;
   bridge: Pick<TradingLabStreamBridge, 'subscribeAppended'>;
   guards: ChatFollowConfig;
+  completionSummaryEnabled?: boolean;
   now?: () => string;
   newIds?: () => FollowerIds;
   startFollow?: (args: StartFollowArgs) => void;
@@ -34,6 +35,7 @@ export function makeTradingLabOperatorResponder(deps: TradingLabOperatorResponde
     void new ConversationFollower({
       ids: args.ids, taskId: args.taskId, taskType: args.taskType, nextTaskType: args.nextTaskType, emit: args.emit,
       client: deps.client, bridge: deps.bridge, guards: deps.guards,
+      completionSummaryEnabled: deps.completionSummaryEnabled,
     }).run();
   });
 
