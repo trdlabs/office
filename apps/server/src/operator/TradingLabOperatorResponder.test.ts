@@ -5,7 +5,7 @@ import type { LabChatResponse } from '../connector/tradinglab/labDtos';
 import type { OfficeEvent } from '@trading-office/office-gateway';
 
 const msg = { text: 'hi', source: 'web', target: 'orchestrator', floorId: 'f1' } as const;
-const guards = { maxMs: 1, idleMs: 1, maxDeltas: 1, bootstrapRetries: 1, bootstrapIntervalMs: 0 };
+const guards = { maxMs: 1, idleMs: 1, maxDeltas: 1, bootstrapRetries: 1, bootstrapIntervalMs: 0, completionSummaryEnabled: true };
 const NOW = () => 'T';
 const fixedIds = () => ({ operatorMessageId: 'm1', conversationId: 'c1', replyMessageId: 'r1' });
 const flush = () => new Promise((r) => setTimeout(r, 0));

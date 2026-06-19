@@ -1,6 +1,6 @@
 import type {
   LabAgentSummary, LabAgentActivity, LabAgentEvent, LabHypothesisListItem, LabBacktest,
-  LabCursorEnvelope, LabPageEnvelope, LabHealth, LabReady, LabAuthz,
+  LabCursorEnvelope, LabPageEnvelope, LabHealth, LabReady, LabAuthz, LabCompletionSummary,
 } from './labDtos';
 import type { LabReadReasonCode } from './labReadSource';
 
@@ -61,6 +61,16 @@ export class TradingLabHttpClient {
   // letting callers tell "token rejected" apart from "process not ready" (open /readyz).
   getAuthz(): Promise<LabAuthz> {
     return this.getJson('/v1/authz', true);
+  }
+
+  /** Domain completion summary for a completed task. Returns null when the lab has no summary for it
+   *  (404) or the read is otherwise unavailable — the caller falls back to its prior reply. */
+  async getCompletionSummary(taskId: string): Promise<LabCompletionSummary | null> {
+    try {
+      return await this.getJson<LabCompletionSummary>(`/v1/tasks/${encodeURIComponent(taskId)}/completion-summary`, true);
+    } catch {
+      return null; // OfficeUpstreamError (404/bad_request/unavailable) → degrade to the prior reply
+    }
   }
 
   private async getJson<T>(path: string, auth: boolean): Promise<T> {

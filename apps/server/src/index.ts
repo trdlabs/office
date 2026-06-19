@@ -29,7 +29,7 @@ if (wiring) {
       chatToken: config.tradingLab.chatToken,
       requestTimeoutMs: config.tradingLab.requestTimeoutMs,
     });
-    operatorResponder = makeTradingLabOperatorResponder({ chat, client: wiring.client, bridge: wiring.bridge, guards: config.chatFollow });
+    operatorResponder = makeTradingLabOperatorResponder({ chat, client: wiring.client, bridge: wiring.bridge, guards: config.chatFollow, completionSummaryEnabled: config.chatFollow.completionSummaryEnabled });
   } else {
     operatorResponder = makeChatUnavailableResponder();
   }

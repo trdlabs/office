@@ -76,3 +76,20 @@ describe('TradingLabHttpClient', () => {
     await expect(c.getHypotheses()).rejects.toMatchObject({ office: { reason: 'upstream_bad_response' } });
   });
 });
+
+const client = (fetchImpl: typeof fetch) =>
+  new TradingLabHttpClient({ readUrl: 'http://lab', readToken: 't', requestTimeoutMs: 1000, fetchImpl });
+
+describe('TradingLabHttpClient.getCompletionSummary', () => {
+  it('returns the parsed summary on 200', async () => {
+    const body = { kind: 'backtest.completed', taskId: 'x', status: 'completed', profile: null, hypothesis: null, decision: 'PASS', metrics: { netPnlUsd: 1, netPnlPct: null, winRate: null, profitFactor: null, maxDrawdownPct: null, sharpe: null, totalTrades: null }, reasons: [], willRetry: false, links: { taskId: 'x' }, warnings: [] };
+    const c = client((async () => new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } })) as unknown as typeof fetch);
+    const s = await c.getCompletionSummary('x');
+    expect(s?.kind).toBe('backtest.completed');
+  });
+
+  it('returns null on a 404 (summary not available)', async () => {
+    const c = client((async () => new Response(JSON.stringify({ error: { code: 'not_found' } }), { status: 404, headers: { 'content-type': 'application/json' } })) as unknown as typeof fetch);
+    expect(await c.getCompletionSummary('missing')).toBeNull();
+  });
+});

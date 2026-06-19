@@ -45,4 +45,14 @@ describe('loadConfig', () => {
     expect(c.chatFollow.bootstrapRetries).toBe(8);
     expect(c.stream.reconnectBaseMs).toBe(1000);
   });
+
+  it('completionSummaryEnabled defaults to true when OPERATOR_COMPLETION_SUMMARY is unset', () => {
+    expect(loadConfig({} as NodeJS.ProcessEnv).chatFollow.completionSummaryEnabled).toBe(true);
+  });
+
+  it('completionSummaryEnabled is false when OPERATOR_COMPLETION_SUMMARY=false', () => {
+    expect(
+      loadConfig({ OPERATOR_COMPLETION_SUMMARY: 'false' } as unknown as NodeJS.ProcessEnv).chatFollow.completionSummaryEnabled,
+    ).toBe(false);
+  });
 });

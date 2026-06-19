@@ -96,3 +96,24 @@ export interface LabHealth { status: 'ok' }
 export interface LabReady { status: 'ok' | 'degraded'; checks: { db: boolean } }
 // Credential probe (GET /v1/authz) — auth-gated, so a 200 confirms the read token is accepted.
 export interface LabAuthz { status: 'ok' }
+
+// Completion summary — hand-mirrored from trading-lab CompletionSummary contract (lab spec §4).
+// Returned by GET /v1/tasks/:taskId/completion-summary. Only fields the office renders are declared.
+export interface LabProfileRef { id: string; coreIdea: string; direction: string }
+export interface LabHypothesisRef { id: string; thesis: string; confidence: number | null; status: string | null }
+export interface LabCompletionMetrics {
+  netPnlUsd: number | null; netPnlPct: number | null; winRate: number | null;
+  profitFactor: number | null; maxDrawdownPct: number | null; sharpe: number | null; totalTrades: number | null;
+}
+export interface LabSummaryLinks { taskId: string; profileId?: string; hypothesisId?: string; backtestRunId?: string }
+export type LabCompletionDecision = 'PASS' | 'FAIL' | 'MODIFY' | 'INCONCLUSIVE' | 'PAPER_CANDIDATE';
+
+export type LabCompletionSummary =
+  | { kind: 'strategy.onboard'; taskId: string; status: string;
+      profile: LabProfileRef | null; nextStep?: { taskType: string }; links: LabSummaryLinks; warnings: string[] }
+  | { kind: 'research.run_cycle'; taskId: string; status: string; profile: LabProfileRef | null;
+      counts: { proposed: number; validated: number; rejected: number; deduped: number; criticReviews: number; backtestsEnqueued: number };
+      topHypotheses: LabHypothesisRef[]; nextStep?: { taskType: string }; links: LabSummaryLinks; warnings: string[] }
+  | { kind: 'backtest.completed'; taskId: string; status: string; profile: LabProfileRef | null;
+      hypothesis: LabHypothesisRef | null; decision: LabCompletionDecision;
+      metrics: LabCompletionMetrics; reasons: string[]; willRetry: boolean; links: LabSummaryLinks; warnings: string[] };
