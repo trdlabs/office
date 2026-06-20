@@ -1,4 +1,4 @@
-import type { OfficeEvent } from '@trading-office/office-gateway';
+import type { OfficeEvent, OperatorEvidenceBadge, OperatorAction } from '@trading-office/office-gateway';
 
 export interface OperatorTurn {
   localId: string;
@@ -8,6 +8,11 @@ export interface OperatorTurn {
   replyText: string;
   status: 'pending' | 'streaming' | 'completed' | 'failed';
   error?: string;
+  evidence?: OperatorEvidenceBadge[];
+  actions?: OperatorAction[];
+  pendingInteractionId?: string;
+  sessionId?: string;
+  resolved?: boolean;
 }
 
 export interface OperatorTranscriptState {
@@ -20,7 +25,8 @@ export type TranscriptAction =
   | { kind: 'submit'; localId: string; text: string }
   | { kind: 'accepted'; localId: string; operatorMessageId: string; conversationId: string }
   | { kind: 'submit_failed'; localId: string; error: string }
-  | { kind: 'event'; event: OfficeEvent };
+  | { kind: 'event'; event: OfficeEvent }
+  | { kind: 'resolve'; operatorMessageId: string };
 
 function mapById(
   state: OperatorTranscriptState,
@@ -54,12 +60,38 @@ export function transcriptReducer(state: OperatorTranscriptState, action: Transc
           t.localId === action.localId ? { ...t, status: 'failed', error: action.error } : t,
         ),
       };
+    case 'resolve':
+      return mapById(state, action.operatorMessageId, (t) => ({ ...t, resolved: true }));
     case 'event': {
       const e = action.event;
       if (e.type === 'operator_message_delta') return mapById(state, e.operatorMessageId, (t) => ({ ...t, replyText: t.replyText + e.textDelta, status: 'streaming' }));
-      if (e.type === 'operator_message_completed') return mapById(state, e.operatorMessageId, (t) => ({ ...t, replyText: e.reply.text, status: 'completed' }));
+      if (e.type === 'operator_message_completed')
+        return mapById(state, e.operatorMessageId, (t) => ({
+          ...t,
+          replyText: e.reply.text,
+          status: 'completed',
+          evidence: e.reply.evidence,
+          actions: e.reply.actions,
+          pendingInteractionId: e.reply.pendingInteractionId,
+          sessionId: e.reply.sessionId,
+        }));
       if (e.type === 'operator_message_failed') return mapById(state, e.operatorMessageId, (t) => ({ ...t, status: 'failed', error: e.error.message }));
       return state;
     }
   }
+}
+
+export interface OperatorEvidenceView {
+  text: string;
+  badges: OperatorEvidenceBadge[];
+}
+
+/** A completed turn that still offers actions and hasn't been acted on — render confirm/cancel + badges. */
+export function isProposalTurn(turn: OperatorTurn): boolean {
+  return turn.status === 'completed' && !!turn.actions && turn.actions.length > 0 && !turn.resolved;
+}
+
+/** Audit-safe projection for the left-dock evidence panel — reply text + the turn's badges, no network. */
+export function turnEvidenceView(turn: OperatorTurn): OperatorEvidenceView {
+  return { text: turn.replyText, badges: turn.evidence ?? [] };
 }
