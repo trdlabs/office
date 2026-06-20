@@ -51,6 +51,9 @@ export function createOfficeApp(deps: OfficeAppDeps) {
     if (!parsed.success) {
       return c.json({ error: { code: 'bad_request', message: 'invalid operator confirm' } }, 400);
     }
+    // Deliberate asymmetry vs the messages route: confirm has no fixture fallback
+    // (a confirm is meaningless without a real chat connector), so an unconfigured
+    // responder honestly returns 503 rather than degrading to a stub.
     if (!deps.operatorConfirmResponder) {
       return c.json({ error: { code: 'not_configured', message: 'operator confirm not configured' } }, 503);
     }
