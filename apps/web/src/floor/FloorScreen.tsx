@@ -6,6 +6,7 @@ import type {
 } from '@trading-office/office-visual-kit';
 import { OfficeSceneCanvas } from '@trading-office/office-visual-kit/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { OperatorEvidenceView } from './panels/operatorTranscript';
 import { useNavigate } from 'react-router-dom';
 import { type FloorThemeName } from '@trading-office/trading-lab-floor';
 import { useRuntimeStore, useConnectionStatus } from '../runtime/RuntimeContext';
@@ -25,6 +26,7 @@ import { ExitConfirm } from './ExitConfirm';
 
 const NONE = { kind: 'none' } as const;
 const OPERATOR_CHAT = { kind: 'operator-chat' } as const;
+const OPERATOR_EVIDENCE = { kind: 'operator-evidence' } as const;
 
 export function FloorScreen({ themeName = 'day' }: { themeName?: FloorThemeName }) {
   const navigate = useNavigate();
@@ -49,13 +51,19 @@ export function FloorScreen({ themeName = 'day' }: { themeName?: FloorThemeName 
   const [leftSel, setLeftSel] = useState<RouteSelection | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
   const [exitOpen, setExitOpen] = useState(false);
+  const [evidenceView, setEvidenceView] = useState<OperatorEvidenceView | null>(null);
 
   const leftKind = useMemo(
-    () => (leftSel ? resolvePanel(leftSel, agentInfos) : NONE),
-    [leftSel, agentInfos],
+    () => (evidenceView ? OPERATOR_EVIDENCE : leftSel ? resolvePanel(leftSel, agentInfos) : NONE),
+    [evidenceView, leftSel, agentInfos],
   );
   const leftOpen = opensDock(leftKind);
   const selKey = leftSel ? selectionKey(leftSel) : 'none';
+
+  const closeLeft = useCallback(() => {
+    if (evidenceView) { setEvidenceView(null); return; }
+    setLeftSel(null);
+  }, [evidenceView]);
 
   const onAgentClick = useCallback((agent: AgentEntity) => {
     if (reconciling.current) return;
@@ -147,8 +155,8 @@ export function FloorScreen({ themeName = 'day' }: { themeName?: FloorThemeName 
 
       {/* Left dock: agent logs / object inspection. Right dock: chat. Both can
           be open at once and stretch to the office edge. */}
-      <PanelDock side="left" open={leftOpen} panelKind={leftKind} onClose={() => setLeftSel(null)} />
-      <PanelDock side="right" open={chatOpen} panelKind={OPERATOR_CHAT} onClose={() => setChatOpen(false)} />
+      <PanelDock side="left" open={leftOpen} panelKind={leftKind} evidenceView={evidenceView} onClose={closeLeft} />
+      <PanelDock side="right" open={chatOpen} panelKind={OPERATOR_CHAT} onClose={() => setChatOpen(false)} onShowEvidence={setEvidenceView} />
 
       {!chatOpen && (
         <button type="button" className="floor__chat-btn" onClick={() => setChatOpen(true)}>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolvePanel, selectedEntityId, type FloorAgentInfo } from './panelRegistry';
+import { resolvePanel, selectedEntityId, opensDock, type FloorAgentInfo } from './panelRegistry';
 
 const agents: FloorAgentInfo[] = [
   { id: 'boss', role: 'boss' },
@@ -31,6 +31,18 @@ describe('resolvePanel', () => {
   });
   it('returns none with no selection', () => {
     expect(resolvePanel({}, agents)).toEqual({ kind: 'none' });
+  });
+});
+
+describe('opensDock', () => {
+  it('opensDock is true for operator-evidence', () => {
+    expect(opensDock({ kind: 'operator-evidence' })).toBe(true);
+  });
+
+  it('resolvePanel never produces operator-evidence (it is set directly, not route-resolved)', () => {
+    // operator-evidence is local UI state in FloorScreen, never derived from a RouteSelection.
+    expect(resolvePanel({ operator: true }, []).kind).toBe('operator-chat');
+    expect(resolvePanel({}, []).kind).toBe('none');
   });
 });
 

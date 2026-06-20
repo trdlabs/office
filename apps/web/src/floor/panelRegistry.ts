@@ -8,6 +8,7 @@ export interface FloorAgentInfo {
 
 export type PanelKind =
   | { kind: 'operator-chat' }
+  | { kind: 'operator-evidence' }
   | { kind: 'agent-activity'; agentId: string }
   | { kind: 'object'; panelTarget: ObjectPanelTarget }
   | { kind: 'exit' }
@@ -54,6 +55,7 @@ export function selectedEntityId(
 export function opensDock(kind: PanelKind): boolean {
   return (
     kind.kind === 'operator-chat' ||
+    kind.kind === 'operator-evidence' ||
     kind.kind === 'agent-activity' ||
     kind.kind === 'object' ||
     kind.kind === 'unknown'
