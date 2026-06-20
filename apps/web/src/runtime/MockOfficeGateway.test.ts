@@ -34,6 +34,8 @@ describe('MockOfficeGateway', () => {
     const completed = events.find((e) => e.type === 'operator_message_completed');
     expect(accepted.status).toBe('accepted');
     expect(completed && completed.type === 'operator_message_completed' && completed.operatorMessageId).toBe(accepted.operatorMessageId);
+    const acceptedEvent = events.find((e) => e.type === 'operator_message_accepted');
+    expect(acceptedEvent && acceptedEvent.type === 'operator_message_accepted' && acceptedEvent.operatorMessageId).toBe(accepted.operatorMessageId);
   });
 
   it('subscribeOfficeEvents emits an initial snapshot and can be unsubscribed', () => {
