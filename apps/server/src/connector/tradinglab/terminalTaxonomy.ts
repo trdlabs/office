@@ -8,7 +8,7 @@ export interface TerminalRule {
 }
 
 export const TERMINAL_TAXONOMY: TerminalRule[] = [
-  { prefixes: ['strategy.onboard', 'strategy.analyze_source'], successTypes: ['strategy_analyst.completed'] },
+  { prefixes: ['strategy.onboard', 'strategy.analyze_source'], successTypes: ['strategy_analyst.completed', 'strategy.onboard.deduped'] },
   { prefixes: ['research.run_cycle'], successTypes: ['research.run_cycle.completed'] },
   { prefixes: ['hypothesis.build'], successTypes: ['evaluation.completed'] },
 ];
