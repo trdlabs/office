@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { makeTradingLabOperatorResponder, makeTradingLabOperatorConfirmResponder } from './TradingLabOperatorResponder';
+import { makeTradingLabOperatorResponder, makeTradingLabOperatorConfirmResponder, defaultNewIds } from './TradingLabOperatorResponder';
 import { OfficeEventBus } from '../events/OfficeEventBus';
 import type { LabChatResponse } from '../connector/tradinglab/labDtos';
 import type { OfficeEvent } from '@trading-office/office-gateway';
@@ -131,5 +131,20 @@ describe('makeTradingLabOperatorConfirmResponder', () => {
     respondConfirm({ pendingInteractionId: 'p1', sessionId: 's1', decision: 'confirm' }, bus);
     await flush();
     expect(startFollow).toHaveBeenCalledWith(expect.objectContaining({ taskId: 't9' }));
+  });
+});
+
+describe('defaultNewIds', () => {
+  it('defaultNewIds: two independent instances never collide on operatorMessageId (Q1 regression)', () => {
+    const a = defaultNewIds();
+    const b = defaultNewIds();
+    const a1 = a();
+    const b1 = b();
+    expect(a1.operatorMessageId).not.toBe(b1.operatorMessageId);
+    // each call is also unique within an instance
+    expect(a().operatorMessageId).not.toBe(a1.operatorMessageId);
+    // all three id fields are distinct, non-empty strings
+    expect(new Set([a1.operatorMessageId, a1.conversationId, a1.replyMessageId]).size).toBe(3);
+    expect(a1.operatorMessageId.length).toBeGreaterThan(0);
   });
 });
