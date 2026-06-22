@@ -100,6 +100,7 @@ export function createDownstreamBacktestWatcher(deps: DownstreamBacktestWatcherD
 
   async function surface(reg: Registration, e: LabAgentEvent): Promise<void> {
     const summary = await fetchSummary(e.taskId);
+    if (reg.done) return;
     const text = summary ? deps.render(summary) : FALLBACK_TEXT;
     const { operatorMessageId, replyMessageId } = deps.newIds();
     const ts = new Date().toISOString();
