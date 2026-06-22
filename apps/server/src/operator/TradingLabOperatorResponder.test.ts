@@ -154,6 +154,59 @@ describe('makeTradingLabOperatorConfirmResponder', () => {
   });
 });
 
+describe('onRunCycleTask hook', () => {
+  it('calls onRunCycleTask for a research.run_cycle task_created', async () => {
+    const onRunCycleTask = vi.fn();
+    const bus = new OfficeEventBus();
+    const chat = { send: vi.fn(async () => ({ kind: 'task_created' as const, sessionId: 's', taskId: 'rc-1', taskType: 'research.run_cycle', status: 'queued' as const })) };
+    const responder = makeTradingLabOperatorResponder({
+      chat: chat as never, client: {} as never, bridge: {} as never, guards, now: NOW, newIds: fixedIds, startFollow: vi.fn(), onRunCycleTask,
+    });
+    responder(msg, bus);
+    await flush();
+    expect(onRunCycleTask).toHaveBeenCalledWith('rc-1', 'c1');
+  });
+
+  it('calls onRunCycleTask when plannedNextStep.taskType is research.run_cycle', async () => {
+    const onRunCycleTask = vi.fn();
+    const bus = new OfficeEventBus();
+    const chat = { send: vi.fn(async () => ({ kind: 'task_created' as const, sessionId: 's', taskId: 'rc-2', taskType: 'strategy.onboard', status: 'queued' as const, plannedNextStep: { taskType: 'research.run_cycle' } })) };
+    const responder = makeTradingLabOperatorResponder({
+      chat: chat as never, client: {} as never, bridge: {} as never, guards, now: NOW, newIds: fixedIds, startFollow: vi.fn(), onRunCycleTask,
+    });
+    responder(msg, bus);
+    await flush();
+    expect(onRunCycleTask).toHaveBeenCalledWith('rc-2', 'c1');
+  });
+
+  it('does NOT call onRunCycleTask for a strategy.onboard task_created without a run_cycle next step', async () => {
+    const onRunCycleTask = vi.fn();
+    const bus = new OfficeEventBus();
+    const chat = { send: vi.fn(async () => ({ kind: 'task_created' as const, sessionId: 's', taskId: 'ob-1', taskType: 'strategy.onboard', status: 'queued' as const })) };
+    const responder = makeTradingLabOperatorResponder({
+      chat: chat as never, client: {} as never, bridge: {} as never, guards, now: NOW, newIds: fixedIds, startFollow: vi.fn(), onRunCycleTask,
+    });
+    responder(msg, bus);
+    await flush();
+    expect(onRunCycleTask).not.toHaveBeenCalled();
+  });
+
+  it('confirm responder calls onRunCycleTask for a run_cycle task_created', async () => {
+    const onRunCycleTask = vi.fn();
+    const bus = new OfficeEventBus();
+    const chat = {
+      send: async (): Promise<never> => { throw new Error('unused'); },
+      confirm: vi.fn(async () => ({ kind: 'task_created' as const, sessionId: 's', taskId: 'rc-3', taskType: 'research.run_cycle', status: 'queued' as const })),
+    };
+    const respondConfirm = makeTradingLabOperatorConfirmResponder({
+      chat: chat as never, client: {} as never, bridge: {} as never, guards, now: NOW, newIds: fixedIds, startFollow: vi.fn(), onRunCycleTask,
+    });
+    respondConfirm({ pendingInteractionId: 'p1', sessionId: 's1', decision: 'confirm' }, bus);
+    await flush();
+    expect(onRunCycleTask).toHaveBeenCalledWith('rc-3', 'c1');
+  });
+});
+
 describe('defaultNewIds', () => {
   it('defaultNewIds: two independent instances never collide on operatorMessageId (Q1 regression)', () => {
     const a = defaultNewIds();

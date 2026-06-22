@@ -29,6 +29,16 @@ export interface PlatformConfig {
   requestTimeoutMs: number;
 }
 
+export interface DownstreamBacktestsConfig {
+  enabled: boolean;
+  idleMs: number;
+  maxMs: number;
+  bootstrapRetries: number;
+  bootstrapIntervalMs: number;
+  summaryRetries: number;
+  summaryIntervalMs: number;
+}
+
 export interface OfficeServerConfig {
   port: number;
   corsOrigin: string;
@@ -40,6 +50,7 @@ export interface OfficeServerConfig {
   chatFollow: ChatFollowConfig;
   stream: StreamConfig;
   platform: PlatformConfig;
+  downstreamBacktests: DownstreamBacktestsConfig;
 }
 
 const num = (env: NodeJS.ProcessEnv, key: string, def: number): number => {
@@ -106,5 +117,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): OfficeServerCo
       reconnectMaxMs: num(env, 'OFFICE_STREAM_RECONNECT_MAX_MS', 30000),
     },
     platform,
+    downstreamBacktests: {
+      enabled: env.OPERATOR_DOWNSTREAM_BACKTESTS === 'true' && connectorMode === 'trading-lab',
+      idleMs: num(env, 'OFFICE_BACKTEST_WATCH_IDLE_MS', 120000),
+      maxMs: num(env, 'OFFICE_BACKTEST_WATCH_MAX_MS', 900000),
+      bootstrapRetries: num(env, 'OFFICE_CHAT_BOOTSTRAP_RETRIES', 8),
+      bootstrapIntervalMs: num(env, 'OFFICE_CHAT_BOOTSTRAP_INTERVAL_MS', 750),
+      summaryRetries: num(env, 'OFFICE_BACKTEST_SUMMARY_RETRIES', 5),
+      summaryIntervalMs: num(env, 'OFFICE_BACKTEST_SUMMARY_INTERVAL_MS', 500),
+    },
   };
 }

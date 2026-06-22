@@ -6,8 +6,11 @@ import { createTradingLabWiring } from './connector/createTradingLabWiring';
 import { FixtureOfficeReadConnector } from './connector/FixtureOfficeReadConnector';
 import { OfficeEventBus } from './events/OfficeEventBus';
 import { TradingLabChatConnector } from './operator/TradingLabChatConnector';
-import { makeTradingLabOperatorResponder, makeTradingLabOperatorConfirmResponder, makeChatUnavailableResponder } from './operator/TradingLabOperatorResponder';
+import { makeTradingLabOperatorResponder, makeTradingLabOperatorConfirmResponder, makeChatUnavailableResponder, defaultNewIds } from './operator/TradingLabOperatorResponder';
 import type { OperatorResponder, OperatorConfirmResponder } from './operator/TradingLabOperatorResponder';
+import { createDownstreamBacktestWatcher } from './operator/DownstreamBacktestWatcher';
+import type { DownstreamBacktestWatcher } from './operator/DownstreamBacktestWatcher';
+import { renderCompletionSummary } from './operator/completionSummaryRender';
 
 const nowIso = (): string => new Date().toISOString();
 
@@ -23,6 +26,7 @@ const heartbeat = setInterval(() => {
 
 let operatorResponder: OperatorResponder | undefined;
 let operatorConfirmResponder: OperatorConfirmResponder | undefined;
+let backtestWatcher: DownstreamBacktestWatcher | undefined;
 if (wiring) {
   if (config.tradingLab.chatToken) {
     const chat = new TradingLabChatConnector({
@@ -30,7 +34,24 @@ if (wiring) {
       chatToken: config.tradingLab.chatToken,
       requestTimeoutMs: config.tradingLab.requestTimeoutMs,
     });
-    const responderDeps = { chat, client: wiring.client, bridge: wiring.bridge, guards: config.chatFollow, completionSummaryEnabled: config.chatFollow.completionSummaryEnabled };
+    backtestWatcher = config.downstreamBacktests.enabled
+      ? createDownstreamBacktestWatcher({
+          bridge: wiring.bridge,
+          client: {
+            getAgentEvents: (q) => wiring!.client.getAgentEvents(q).then((env) => env.data),
+            getCompletionSummary: (taskId) => wiring!.client.getCompletionSummary(taskId),
+          },
+          bus,
+          newIds: () => { const { operatorMessageId, replyMessageId } = defaultNewIds()(); return { operatorMessageId, replyMessageId }; },
+          render: renderCompletionSummary,
+          guards: config.downstreamBacktests,
+        })
+      : undefined;
+    const responderDeps = {
+      chat, client: wiring.client, bridge: wiring.bridge, guards: config.chatFollow,
+      completionSummaryEnabled: config.chatFollow.completionSummaryEnabled,
+      onRunCycleTask: backtestWatcher ? (taskId: string, cid: string) => backtestWatcher!.register(taskId, cid) : undefined,
+    };
     operatorResponder = makeTradingLabOperatorResponder(responderDeps);
     operatorConfirmResponder = makeTradingLabOperatorConfirmResponder(responderDeps);
   } else {
@@ -47,6 +68,7 @@ injectWebSocket(server);
 const shutdown = (): void => {
   clearInterval(heartbeat);
   stopConnector();
+  backtestWatcher?.stop();
   server.close();
   process.exit(0);
 };

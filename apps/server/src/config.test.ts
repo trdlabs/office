@@ -55,4 +55,29 @@ describe('loadConfig', () => {
       loadConfig({ OPERATOR_COMPLETION_SUMMARY: 'false' } as unknown as NodeJS.ProcessEnv).chatFollow.completionSummaryEnabled,
     ).toBe(false);
   });
+
+  it('downstream-backtests flag defaults off; on when OPERATOR_DOWNSTREAM_BACKTESTS=true in trading-lab mode', () => {
+    // defaults off in fixture mode
+    expect(loadConfig({}).downstreamBacktests.enabled).toBe(false);
+    // defaults off even with flag set in fixture mode
+    expect(loadConfig({ OPERATOR_DOWNSTREAM_BACKTESTS: 'true' }).downstreamBacktests.enabled).toBe(false);
+    // on when flag=true + trading-lab mode
+    expect(
+      loadConfig({ OFFICE_CONNECTOR_MODE: 'trading-lab', ...base, OPERATOR_DOWNSTREAM_BACKTESTS: 'true' }).downstreamBacktests.enabled,
+    ).toBe(true);
+    // off when flag unset in trading-lab mode
+    expect(
+      loadConfig({ OFFICE_CONNECTOR_MODE: 'trading-lab', ...base }).downstreamBacktests.enabled,
+    ).toBe(false);
+  });
+
+  it('downstream-backtests guard defaults are applied', () => {
+    const c = loadConfig({ OFFICE_CONNECTOR_MODE: 'trading-lab', ...base });
+    expect(c.downstreamBacktests.idleMs).toBe(120000);
+    expect(c.downstreamBacktests.maxMs).toBe(900000);
+    expect(c.downstreamBacktests.bootstrapRetries).toBe(8);
+    expect(c.downstreamBacktests.bootstrapIntervalMs).toBe(750);
+    expect(c.downstreamBacktests.summaryRetries).toBe(5);
+    expect(c.downstreamBacktests.summaryIntervalMs).toBe(500);
+  });
 });

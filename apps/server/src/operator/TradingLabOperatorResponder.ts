@@ -27,6 +27,7 @@ export interface TradingLabOperatorResponderDeps {
   now?: () => string;
   newIds?: () => FollowerIds;
   startFollow?: (args: StartFollowArgs) => void;
+  onRunCycleTask?: (runCycleTaskId: string, conversationId: string) => void;
 }
 
 function badgeLabel(c: LabEvidenceCard): string {
@@ -50,6 +51,7 @@ function emitFromLabResponse(
   failed: (code: string, message: string) => void,
   progress: (stage: string, note: string) => void,
   startFollow: (args: StartFollowArgs) => void,
+  onRunCycleTask?: (runCycleTaskId: string, conversationId: string) => void,
 ): void {
   switch (resp.kind) {
     case 'assistant_message':
@@ -64,6 +66,9 @@ function emitFromLabResponse(
     case 'task_created':
       progress('task_created', `${resp.taskType} · ${resp.taskId}`);
       startFollow({ ids, taskId: resp.taskId, taskType: resp.taskType, nextTaskType: resp.plannedNextStep?.taskType, emit });
+      if (resp.taskType === 'research.run_cycle' || resp.plannedNextStep?.taskType === 'research.run_cycle') {
+        onRunCycleTask?.(resp.taskId, ids.conversationId);
+      }
       return;
     case 'task_status':
       if (resp.status === 'completed') { completed(`Task ${resp.taskId} completed`); return; }
@@ -139,7 +144,7 @@ async function runTurn(
     return;
   }
 
-  emitFromLabResponse(resp, ids, emit, completed, failed, progress, startFollow);
+  emitFromLabResponse(resp, ids, emit, completed, failed, progress, startFollow, deps.onRunCycleTask);
 }
 
 async function runConfirmTurn(
@@ -167,7 +172,7 @@ async function runConfirmTurn(
     failed(err.office?.code ?? 'chat_error', err.message ?? 'chat confirm error');
     return;
   }
-  emitFromLabResponse(resp, ids, emit, completed, failed, progress, startFollow);
+  emitFromLabResponse(resp, ids, emit, completed, failed, progress, startFollow, deps.onRunCycleTask);
 }
 
 /** Used in trading-lab mode when the chat token is unset: accept, notice, fail — never silently inert. */
