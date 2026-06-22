@@ -133,6 +133,13 @@ export const officeEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('operator_message_delta'), ts: z.string(), operatorMessageId: z.string(), conversationId: z.string(), replyMessageId: z.string(), textDelta: z.string() }),
   z.object({ type: z.literal('operator_message_completed'), ts: z.string(), operatorMessageId: z.string(), conversationId: z.string(), replyMessageId: z.string(), reply: operatorReplySchema }),
   z.object({ type: z.literal('operator_message_failed'), ts: z.string(), operatorMessageId: z.string(), conversationId: z.string(), replyMessageId: z.string().optional(), error: officeErrorSchema }),
+  z.object({
+    type: z.literal('operator_assistant_message'),
+    ts: z.string(),
+    operatorMessageId: z.string(),
+    conversationId: z.string(),
+    reply: operatorReplySchema,
+  }),
   z.object({ type: z.literal('system_notice'), ts: z.string(), level: z.enum(['info', 'warn', 'error']), text: z.string() }),
   z.object({ type: z.literal('office_error'), ts: z.string(), error: officeErrorSchema }),
   z.object({ type: z.literal('heartbeat'), ts: z.string() }),

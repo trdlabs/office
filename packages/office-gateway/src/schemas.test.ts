@@ -89,6 +89,32 @@ describe('operator confirm wire', () => {
   });
 });
 
+describe('operator_assistant_message event', () => {
+  const valid = {
+    type: 'operator_assistant_message',
+    ts: '2026-06-22T00:00:00.000Z',
+    operatorMessageId: 'om-1',
+    conversationId: 'cv-1',
+    reply: {
+      replyMessageId: 'rm-1',
+      operatorMessageId: 'om-1',
+      conversationId: 'cv-1',
+      text: 'PASS: «idea» · netPnl +12%.',
+      ts: '2026-06-22T00:00:00.000Z',
+    },
+  };
+
+  it('parses a valid proactive assistant message', () => {
+    const r = officeEventSchema.parse(valid);
+    expect(r.type).toBe('operator_assistant_message');
+  });
+
+  it('rejects when reply is missing', () => {
+    const { reply, ...noReply } = valid;
+    expect(() => officeEventSchema.parse(noReply)).toThrow();
+  });
+});
+
 describe('phase-3 contract widening', () => {
   it('accepts a backtest with null metrics + null descriptors', () => {
     const parsed = backtestSummarySchema.parse({
