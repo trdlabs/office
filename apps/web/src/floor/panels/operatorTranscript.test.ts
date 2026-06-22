@@ -117,3 +117,40 @@ it('in-order submit → accepted → completed is unchanged (Q4 no regression)',
   expect(s.turns[0]!.replyText).toBe('hi');
   expect(Object.keys(s.pendingCompleted)).toHaveLength(0);
 });
+
+describe('assistant_turn (proactive assistant message)', () => {
+  const reply = {
+    replyMessageId: 'rm-1',
+    operatorMessageId: 'om-A',
+    conversationId: 'cv-1',
+    text: 'PASS: «idea» · netPnl +12%.',
+    ts: '2026-06-22T00:00:00.000Z',
+  };
+
+  it('appends a completed assistant-only turn', () => {
+    const s = transcriptReducer(emptyTranscript, {
+      kind: 'assistant_turn', operatorMessageId: 'om-A', conversationId: 'cv-1', reply,
+    });
+    expect(s.turns).toHaveLength(1);
+    const t = s.turns[0];
+    expect(t!.kind).toBe('assistant');
+    expect(t!.operatorMessageId).toBe('om-A');
+    expect(t!.userText).toBe('');
+    expect(t!.replyText).toBe(reply.text);
+    expect(t!.status).toBe('completed');
+  });
+
+  it('does not disturb existing turns or the pendingCompleted buffer (Q4 intact)', () => {
+    const seeded = { ...emptyTranscript, pendingCompleted: { 'om-X': { foo: 1 } as never } };
+    const s = transcriptReducer(seeded, {
+      kind: 'assistant_turn', operatorMessageId: 'om-A', conversationId: 'cv-1', reply,
+    });
+    expect(s.pendingCompleted).toEqual(seeded.pendingCompleted);
+  });
+
+  it('two assistant_turns append in arrival order', () => {
+    let s = transcriptReducer(emptyTranscript, { kind: 'assistant_turn', operatorMessageId: 'om-A', conversationId: 'cv-1', reply });
+    s = transcriptReducer(s, { kind: 'assistant_turn', operatorMessageId: 'om-B', conversationId: 'cv-1', reply: { ...reply, operatorMessageId: 'om-B', text: 'FAIL.' } });
+    expect(s.turns.map((t) => t.operatorMessageId)).toEqual(['om-A', 'om-B']);
+  });
+});

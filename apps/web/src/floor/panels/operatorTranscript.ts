@@ -1,6 +1,7 @@
 import type { OfficeEvent, OperatorEvidenceBadge, OperatorAction } from '@trading-office/office-gateway';
 
 type CompletedReply = Extract<OfficeEvent, { type: 'operator_message_completed' }>['reply'];
+type AssistantReply = Extract<OfficeEvent, { type: 'operator_assistant_message' }>['reply'];
 
 export interface OperatorTurn {
   localId: string;
@@ -15,6 +16,7 @@ export interface OperatorTurn {
   pendingInteractionId?: string;
   sessionId?: string;
   resolved?: boolean;
+  kind?: 'user' | 'assistant';
 }
 
 export interface OperatorTranscriptState {
@@ -29,7 +31,8 @@ export type TranscriptAction =
   | { kind: 'accepted'; localId: string; operatorMessageId: string; conversationId: string }
   | { kind: 'submit_failed'; localId: string; error: string }
   | { kind: 'event'; event: OfficeEvent }
-  | { kind: 'resolve'; operatorMessageId: string };
+  | { kind: 'resolve'; operatorMessageId: string }
+  | { kind: 'assistant_turn'; operatorMessageId: string; conversationId: string; reply: AssistantReply };
 
 function mapById(
   state: OperatorTranscriptState,
@@ -86,6 +89,23 @@ export function transcriptReducer(state: OperatorTranscriptState, action: Transc
       };
     case 'resolve':
       return mapById(state, action.operatorMessageId, (t) => ({ ...t, resolved: true }));
+    case 'assistant_turn': {
+      const turn: OperatorTurn = {
+        localId: action.operatorMessageId,
+        operatorMessageId: action.operatorMessageId,
+        conversationId: action.conversationId,
+        userText: '',
+        replyText: action.reply.text,
+        status: 'completed',
+        evidence: action.reply.evidence,
+        actions: action.reply.actions,
+        pendingInteractionId: action.reply.pendingInteractionId,
+        sessionId: action.reply.sessionId,
+        resolved: true,
+        kind: 'assistant',
+      };
+      return { ...state, turns: [...state.turns, turn] };
+    }
     case 'event': {
       const e = action.event;
       if (e.type === 'operator_message_delta') return mapById(state, e.operatorMessageId, (t) => ({ ...t, replyText: t.replyText + e.textDelta, status: 'streaming' }));
