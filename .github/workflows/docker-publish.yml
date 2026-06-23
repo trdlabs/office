@@ -1,0 +1,67 @@
+name: Publish images
+
+# Builds the two office runtime images on CI and pushes them to GHCR so consumers
+# (the lab demo overlay) `docker pull` ready images instead of building from source.
+#   trading-office-server  ← apps/server/Dockerfile
+#   trading-office-web      ← apps/web/Dockerfile (Vite bakes the gateway URL below)
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: publish-images-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - name: trading-office-server
+            dockerfile: apps/server/Dockerfile
+            build-args: ""
+          - name: trading-office-web
+            dockerfile: apps/web/Dockerfile
+            # Baked into the static bundle at build time. These match the demo's
+            # loopback defaults; a different public origin needs a rebuild.
+            build-args: |
+              VITE_OFFICE_MODE=connected
+              VITE_OFFICE_GATEWAY_URL=http://localhost:8787
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Derive image tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.name }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=short
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          build-args: ${{ matrix.build-args }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
