@@ -2,22 +2,30 @@ import { useState, type FormEvent } from 'react';
 
 /**
  * The entrance dialog, styled as an in-game "ACCESS TERMINAL". Collects a login
- * and a password to match the expected sign-in shape, but sign-in is still mock
- * (Phase 1): any value is accepted and only the login name is carried forward.
+ * name and a password. When the server enforces auth the password is verified
+ * server-side; in open/mock mode any value is accepted. The parent decides and
+ * surfaces failures via `error`.
  */
 export function LoginModal({
   onSubmit,
   onCancel,
+  error,
+  busy = false,
+  hint = 'Enter the operator password to sign in.',
 }: {
-  onSubmit: (name: string) => void;
+  onSubmit: (name: string, password: string) => void | Promise<void>;
   onCancel: () => void;
+  error?: string | null;
+  busy?: boolean;
+  hint?: string;
 }) {
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    onSubmit(name.trim() || 'Operator');
+    if (busy) return;
+    void onSubmit(name.trim() || 'Operator', password);
   }
 
   return (
@@ -69,14 +77,20 @@ export function LoginModal({
             />
           </label>
 
-          <p className="terminal__hint">Mock sign-in — no real authentication. Any value works.</p>
+          <p className="terminal__hint">{hint}</p>
+
+          {error && (
+            <p className="terminal__error" role="alert">
+              <span className="terminal__prompt">!</span> {error}
+            </p>
+          )}
 
           <div className="terminal__actions">
-            <button type="button" className="btn btn--ghost" onClick={onCancel}>
+            <button type="button" className="btn btn--ghost" onClick={onCancel} disabled={busy}>
               Cancel
             </button>
-            <button type="submit" className="btn btn--primary">
-              Enter ▸
+            <button type="submit" className="btn btn--primary" disabled={busy}>
+              {busy ? 'Signing in…' : 'Enter ▸'}
             </button>
           </div>
         </div>

@@ -28,6 +28,8 @@ export interface HttpOfficeGatewayOptions {
   wsUrl?: string;
   fetchImpl?: (input: string, init?: RequestInit) => Promise<Response>;
   wsFactory?: (url: string) => WebSocketLike;
+  /** Supplies the current operator session token, read at request time. */
+  getToken?: () => string | null;
 }
 
 const MAX_RECONNECT_ATTEMPTS = 6;
@@ -37,6 +39,7 @@ export class HttpOfficeGateway implements OfficeGateway {
   private readonly wsUrl: string;
   private readonly fetchImpl: (input: string, init?: RequestInit) => Promise<Response>;
   private readonly wsFactory: (url: string) => WebSocketLike;
+  private readonly getToken: () => string | null;
 
   private ws: WebSocketLike | null = null;
   private readonly subscribers = new Set<(e: OfficeEvent) => void>();
@@ -62,10 +65,17 @@ export class HttpOfficeGateway implements OfficeGateway {
     this.wsUrl = (opts.wsUrl ?? this.baseUrl.replace(/^http/, 'ws')).replace(/\/$/, '');
     this.fetchImpl = opts.fetchImpl ?? ((input, init) => fetch(input, init));
     this.wsFactory = opts.wsFactory ?? ((url) => new WebSocket(url) as unknown as WebSocketLike);
+    this.getToken = opts.getToken ?? (() => null);
+  }
+
+  /** Authorization header for the current token, or {} when running open. */
+  private authHeaders(): Record<string, string> {
+    const token = this.getToken();
+    return token ? { authorization: `Bearer ${token}` } : {};
   }
 
   private async get<T>(path: string): Promise<T> {
-    const res = await this.fetchImpl(this.baseUrl + path);
+    const res = await this.fetchImpl(this.baseUrl + path, { headers: this.authHeaders() });
     if (!res.ok) {
       let detail = res.statusText;
       try { const body = (await res.json()) as { error?: { message?: string } }; detail = body?.error?.message ?? detail; } catch { /* keep statusText */ }
@@ -87,7 +97,7 @@ export class HttpOfficeGateway implements OfficeGateway {
   async sendOperatorMessage(msg: OperatorMessage): Promise<OperatorMessageAccepted> {
     const res = await this.fetchImpl(this.baseUrl + OFFICE_API.operatorMessages, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', ...this.authHeaders() },
       body: JSON.stringify(msg),
     });
     if (!res.ok) throw new Error(`operator message rejected: ${res.status}`);
@@ -97,7 +107,7 @@ export class HttpOfficeGateway implements OfficeGateway {
   async confirmAction(input: OperatorConfirm): Promise<OperatorMessageAccepted> {
     const res = await this.fetchImpl(this.baseUrl + OFFICE_API.operatorConfirm, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', ...this.authHeaders() },
       body: JSON.stringify(input),
     });
     if (!res.ok) throw new Error(`operator confirm rejected: ${res.status}`);
@@ -116,7 +126,11 @@ export class HttpOfficeGateway implements OfficeGateway {
   private connect(): void {
     this.setConnection('connecting');
     this.closedByUs = false;
-    const ws = this.wsFactory(this.wsUrl + OFFICE_API.events);
+    // The browser WebSocket cannot set headers, so the session token rides in
+    // the query string; the server reads it from ?access_token on the upgrade.
+    const token = this.getToken();
+    const wsUrl = this.wsUrl + OFFICE_API.events + (token ? `?access_token=${encodeURIComponent(token)}` : '');
+    const ws = this.wsFactory(wsUrl);
     this.ws = ws;
     ws.addEventListener('open', () => { this.attempts = 0; this.setConnection('connected'); });
     ws.addEventListener('message', (ev) => {

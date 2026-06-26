@@ -13,8 +13,20 @@ describe('sessionReducer', () => {
   });
 
   it('logs out', () => {
-    const loggedIn = { user: { name: 'Alex' } };
-    expect(sessionReducer(loggedIn, { type: 'logout' }).user).toBeNull();
+    const loggedIn = { user: { name: 'Alex' }, token: 'tok' };
+    const out = sessionReducer(loggedIn, { type: 'logout' });
+    expect(out.user).toBeNull();
+    expect(out.token).toBeNull();
+  });
+
+  it('carries a session token when one is provided', () => {
+    const s = sessionReducer(initialSession, { type: 'login', name: 'Alex', token: 'jwt-123' });
+    expect(s.token).toBe('jwt-123');
+  });
+
+  it('defaults the token to null when login omits it (open / mock mode)', () => {
+    const s = sessionReducer(initialSession, { type: 'login', name: 'Alex' });
+    expect(s.token).toBeNull();
   });
 });
 
@@ -23,7 +35,7 @@ describe('shouldRedirect', () => {
     expect(shouldRedirect(initialSession, '/floor/trading-lab')).toBe(true);
   });
   it('allows floor routes when logged in', () => {
-    expect(shouldRedirect({ user: { name: 'A' } }, '/floor/trading-lab')).toBe(false);
+    expect(shouldRedirect({ user: { name: 'A' }, token: null }, '/floor/trading-lab')).toBe(false);
   });
   it('never redirects the lobby', () => {
     expect(shouldRedirect(initialSession, '/')).toBe(false);

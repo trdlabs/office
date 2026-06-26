@@ -16,7 +16,7 @@ const STORAGE_KEY = 'trading-office.session';
 
 interface SessionContextValue {
   session: SessionState;
-  login: (name: string) => void;
+  login: (name: string, token?: string | null) => void;
   logout: () => void;
 }
 
@@ -28,10 +28,24 @@ function loadInitial(): SessionState {
     if (!raw) return initialSession;
     const parsed = JSON.parse(raw) as SessionState;
     return parsed.user && typeof parsed.user.name === 'string'
-      ? parsed
+      ? { user: parsed.user, token: parsed.token ?? null }
       : initialSession;
   } catch {
     return initialSession;
+  }
+}
+
+/**
+ * Read the persisted operator token outside React (the gateway needs it at
+ * request time without subscribing to context). Returns null in open/mock mode.
+ */
+export function readPersistedToken(): string | null {
+  try {
+    const raw = globalThis.localStorage?.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    return (JSON.parse(raw) as SessionState).token ?? null;
+  } catch {
+    return null;
   }
 }
 
@@ -46,7 +60,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
   }, [session]);
 
-  const login = useCallback((name: string) => dispatch({ type: 'login', name }), []);
+  const login = useCallback(
+    (name: string, token?: string | null) => dispatch({ type: 'login', name, token }),
+    [],
+  );
   const logout = useCallback(() => dispatch({ type: 'logout' }), []);
 
   return (

@@ -94,6 +94,52 @@ describe('HttpOfficeGateway', () => {
     await expect(gw.confirmAction({ pendingInteractionId: 'p', sessionId: 's', decision: 'cancel' })).rejects.toThrow();
   });
 
+  it('sends Authorization: Bearer on reads when a token is provided', async () => {
+    let authHeader: string | undefined;
+    const fetchImpl = (async (_url: string, init?: RequestInit) => {
+      authHeader = new Headers(init?.headers).get('authorization') ?? undefined;
+      return jsonResponse(INITIAL_STATUSES);
+    }) as unknown as typeof fetch;
+    const gw = new HttpOfficeGateway({ baseUrl: 'http://x', fetchImpl, getToken: () => 'tok-1' });
+    await gw.getAgentStatuses();
+    expect(authHeader).toBe('Bearer tok-1');
+  });
+
+  it('omits Authorization when no token is available (open mode)', async () => {
+    let hasAuth = true;
+    const fetchImpl = (async (_url: string, init?: RequestInit) => {
+      hasAuth = new Headers(init?.headers).has('authorization');
+      return jsonResponse(INITIAL_STATUSES);
+    }) as unknown as typeof fetch;
+    const gw = new HttpOfficeGateway({ baseUrl: 'http://x', fetchImpl, getToken: () => null });
+    await gw.getAgentStatuses();
+    expect(hasAuth).toBe(false);
+  });
+
+  it('sends Authorization: Bearer on operator POSTs', async () => {
+    let authHeader: string | undefined;
+    const fetchImpl = (async (_url: string, init?: RequestInit) => {
+      authHeader = new Headers(init?.headers).get('authorization') ?? undefined;
+      return new Response(JSON.stringify({ operatorMessageId: 'm', conversationId: 'c', status: 'accepted' }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const gw = new HttpOfficeGateway({ baseUrl: 'http://office', fetchImpl, getToken: () => 'tok-post' });
+    await gw.confirmAction({ pendingInteractionId: 'p', sessionId: 's', decision: 'confirm' });
+    expect(authHeader).toBe('Bearer tok-post');
+  });
+
+  it('passes the token to the WebSocket as ?access_token (header-less upgrade)', () => {
+    const sockets: FakeWs[] = [];
+    const gw = new HttpOfficeGateway({
+      baseUrl: 'http://x',
+      fetchImpl: async () => jsonResponse(null),
+      wsFactory: (url) => { const s = new FakeWs(url); sockets.push(s); return s; },
+      getToken: () => 'tok-ws',
+    });
+    const off = gw.subscribeOfficeEvents!(() => {});
+    expect(sockets[0]!.url).toContain('access_token=tok-ws');
+    off();
+  });
+
   it('signals connection state across the WS lifecycle', () => {
     const sockets: FakeWs[] = [];
     const gw = new HttpOfficeGateway({

@@ -4,13 +4,15 @@ export interface SessionUser {
 
 export interface SessionState {
   user: SessionUser | null;
+  /** Operator session token from the server; null in open/mock mode. */
+  token: string | null;
 }
 
 export type SessionAction =
-  | { type: 'login'; name: string }
+  | { type: 'login'; name: string; token?: string | null }
   | { type: 'logout' };
 
-export const initialSession: SessionState = { user: null };
+export const initialSession: SessionState = { user: null, token: null };
 
 export function sessionReducer(
   state: SessionState,
@@ -18,9 +20,9 @@ export function sessionReducer(
 ): SessionState {
   switch (action.type) {
     case 'login':
-      return { user: { name: action.name.trim() || 'Trader' } };
+      return { user: { name: action.name.trim() || 'Trader' }, token: action.token ?? null };
     case 'logout':
-      return { user: null };
+      return { user: null, token: null };
   }
 }
 

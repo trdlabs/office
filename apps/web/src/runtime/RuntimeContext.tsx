@@ -10,6 +10,7 @@ import { MockOfficeGateway } from './MockOfficeGateway';
 import { HttpOfficeGateway } from './HttpOfficeGateway';
 import { OfficeRuntimeStore } from './OfficeRuntimeStore';
 import { bindGatewayToStore } from './runtimeBinding';
+import { readPersistedToken } from '../session/SessionContext';
 import type { OfficeGateway } from './OfficeGateway';
 import type { ConnectionStatus } from './OfficeRuntimeStore';
 import type { AgentStatusMap } from './types';
@@ -25,7 +26,11 @@ function createGateway(): OfficeGateway {
   const mode = import.meta.env.VITE_OFFICE_MODE ?? 'mock';
   if (mode === 'connected') {
     const baseUrl = import.meta.env.VITE_OFFICE_GATEWAY_URL ?? 'http://localhost:8787';
-    return new HttpOfficeGateway({ baseUrl, wsUrl: import.meta.env.VITE_OFFICE_GATEWAY_WS_URL });
+    return new HttpOfficeGateway({
+      baseUrl,
+      wsUrl: import.meta.env.VITE_OFFICE_GATEWAY_WS_URL,
+      getToken: readPersistedToken,
+    });
   }
   return new MockOfficeGateway();
 }
