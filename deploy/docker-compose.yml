@@ -1,0 +1,30 @@
+# Trading Office demo — runs the published GHCR images with operator auth on.
+#
+#   cp deploy/.env.example deploy/.env   # then set OFFICE_OPERATOR_PASSWORD
+#   docker compose -f deploy/docker-compose.yml up
+#   open http://localhost:8080 and sign in with that password
+#
+# Compose auto-loads deploy/.env (same dir as this file). The server runs in
+# fixture mode (no trading-lab needed); auth is enforced because a password is
+# set. See deploy/README.md for connected (trading-lab) mode and remote deploys.
+name: trading-office-demo
+services:
+  office-server:
+    image: ghcr.io/alexnikolskiy/trading-office-server:${OFFICE_IMAGE_TAG:-latest}
+    environment:
+      OFFICE_SERVER_PORT: "8787"
+      # Must match the origin the browser loads the web app from (office-web below).
+      OFFICE_CORS_ORIGIN: "${OFFICE_CORS_ORIGIN:-http://localhost:8080}"
+      # Auth is enforced only because this is set. Required — no default.
+      OFFICE_OPERATOR_PASSWORD: "${OFFICE_OPERATOR_PASSWORD:?set OFFICE_OPERATOR_PASSWORD (cp deploy/.env.example deploy/.env)}"
+    ports:
+      - "8787:8787"
+    restart: unless-stopped
+
+  office-web:
+    image: ghcr.io/alexnikolskiy/trading-office-web:${OFFICE_IMAGE_TAG:-latest}
+    ports:
+      - "8080:80"
+    depends_on:
+      - office-server
+    restart: unless-stopped
