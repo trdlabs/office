@@ -1,0 +1,41 @@
+name: CI
+
+# Validation gate: typecheck, tests, asset sync and the production build across
+# all workspaces. Runs on every PR and on pushes to main (which then also
+# triggers the image publish). Feature branches are covered via their PR, so we
+# don't also build them on push — only main.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm run test
+
+      - name: Verify floor assets are in sync
+        run: npm run verify:assets
+
+      - name: Build
+        run: npm run build
