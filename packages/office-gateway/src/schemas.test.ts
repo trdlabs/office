@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   agentActivitySchema,
+  agentTracesSchema,
   backtestSummarySchema,
   infraStatusSchema,
   operatorMessageSchema,
@@ -10,6 +11,7 @@ import {
   operatorReplySchema,
   operatorConfirmSchema,
 } from './schemas';
+import { OFFICE_API } from './index';
 
 describe('contract schemas round-trip', () => {
   it('accepts a valid AgentActivity', () => {
@@ -112,6 +114,28 @@ describe('operator_assistant_message event', () => {
   it('rejects when reply is missing', () => {
     const { reply, ...noReply } = valid;
     expect(() => officeEventSchema.parse(noReply)).toThrow();
+  });
+});
+
+describe('agentTracesSchema', () => {
+  it('parses an ok payload with a nested span tree', () => {
+    const parsed = agentTracesSchema.parse({
+      agentId: 'analyst', reasonCode: null,
+      traces: [{ traceId: 't1', startTime: '2026-06-27T10:00:00.000Z', status: 'ok', latencyMs: 1000,
+        tokens: { prompt: 10, completion: 5, total: 15 }, costUsd: null, rootName: 'strategy-analyst',
+        spans: [{ spanId: 'a', parentSpanId: null, name: 'strategy-analyst', kind: 'AGENT',
+          startTime: '2026-06-27T10:00:00.000Z', latencyMs: 1000, status: 'ok' }] }],
+    });
+    expect(parsed.traces[0]!.spans[0]!.kind).toBe('AGENT');
+  });
+
+  it('accepts the typed reason codes and rejects unknown ones', () => {
+    expect(agentTracesSchema.parse({ agentId: 'x', reasonCode: 'no-traces', traces: [] }).reasonCode).toBe('no-traces');
+    expect(() => agentTracesSchema.parse({ agentId: 'x', reasonCode: 'bogus', traces: [] })).toThrow();
+  });
+
+  it('builds the traces path', () => {
+    expect(OFFICE_API.agentTraces('a b')).toBe('/api/office/agents/a%20b/traces');
   });
 });
 

@@ -2,6 +2,8 @@ export const OFFICE_API = {
   agentStatuses: '/api/office/agents/statuses',
   agentActivityPattern: '/api/office/agents/:agentId/activity',
   agentActivity: (agentId: string) => `/api/office/agents/${encodeURIComponent(agentId)}/activity`,
+  agentTracesPattern: '/api/office/agents/:agentId/traces',
+  agentTraces: (agentId: string) => `/api/office/agents/${encodeURIComponent(agentId)}/traces`,
   hypotheses: '/api/office/hypotheses',
   backtests: '/api/office/backtests',
   bots: '/api/office/bots',

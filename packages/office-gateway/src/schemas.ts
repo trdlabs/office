@@ -19,6 +19,41 @@ export const agentActivitySchema = z.object({
   logs: z.array(traceLineSchema),
 });
 
+export const traceReasonCodeSchema = z.enum(['tracing-disabled', 'phoenix-unreachable', 'no-traces']);
+
+export const traceSpanSchema = z.object({
+  spanId: z.string(),
+  parentSpanId: z.string().nullable(),
+  name: z.string(),
+  kind: z.enum(['AGENT', 'LLM', 'TOOL', 'CHAIN']),
+  startTime: z.string(),
+  latencyMs: z.number(),
+  status: z.enum(['ok', 'error']),
+  llm: z.object({ model: z.string().optional(), tokensIn: z.number().optional(), tokensOut: z.number().optional() }).optional(),
+});
+
+export const traceSchema = z.object({
+  traceId: z.string(),
+  startTime: z.string(),
+  status: z.enum(['ok', 'error']),
+  latencyMs: z.number(),
+  tokens: z.object({ prompt: z.number().optional(), completion: z.number().optional(), total: z.number().optional() }).optional(),
+  costUsd: z.number().nullable().optional(),
+  rootName: z.string(),
+  spans: z.array(traceSpanSchema),
+});
+
+export const agentTracesSchema = z.object({
+  agentId: z.string(),
+  reasonCode: traceReasonCodeSchema.nullable(),
+  traces: z.array(traceSchema),
+});
+
+export type TraceReasonCode = z.infer<typeof traceReasonCodeSchema>;
+export type TraceSpan = z.infer<typeof traceSpanSchema>;
+export type Trace = z.infer<typeof traceSchema>;
+export type AgentTraces = z.infer<typeof agentTracesSchema>;
+
 export const hypothesisSchema = z.object({
   id: z.string(),
   title: z.string(),
