@@ -1,3 +1,4 @@
+import './loadEnv'; // must be first: populates process.env from apps/server/.env before loadConfig()
 import { serve } from '@hono/node-server';
 import type { OfficeEvent } from '@trading-office/office-gateway';
 import { createOfficeApp } from './app';
