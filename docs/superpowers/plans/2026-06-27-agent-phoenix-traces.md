@@ -23,7 +23,7 @@
 
 ## Phase A — trading-lab (producer)
 
-All paths in Phase A are under `/home/alexxxnikolskiy/projects/trading-lab`.
+All of Phase A executes in the trading-lab **worktree** at `/home/alexxxnikolskiy/projects/trading-lab-phoenix-traces` (branch `feat/agent-phoenix-traces`, based on `main`). The repo-relative paths below (`src/...`) are relative to that worktree root — the original `/home/alexxxnikolskiy/projects/trading-lab` checkout (on an unrelated branch) is untouched.
 
 ### Task A1: Spike — confirm Phoenix REST shape & agent-span identity, capture a fixture
 
@@ -1073,7 +1073,86 @@ git commit -m "feat(office/web): gateway.getAgentTraces"
 
 ---
 
+### Task B6a: Web component-test infrastructure (RTL + jsdom)
+
+**Why:** The web app currently has no React component / DOM test setup — no `@testing-library/react`, no DOM environment, and `apps/web/vite.config.ts` runs Vitest with `environment: 'node'` and `include: ['src/**/*.test.ts']` (so `.test.tsx` files are not even picked up). Task B7 (and future dashboard work: trading results, paper, strategy ranking) needs component tests. This task adds that infrastructure once.
+
+**Files:**
+- Modify: `apps/web/package.json` (devDependencies)
+- Modify: `apps/web/vite.config.ts` (Vitest `test` block)
+- Create: `apps/web/src/test/setup.ts` (jest-dom matchers)
+- Create: `apps/web/src/test/smoke.test.tsx` (proves the harness renders a component)
+
+**Interfaces:**
+- Produces: a working `jsdom` + `@testing-library/react` harness where `*.test.tsx` under `apps/web/src` run and `render`/`screen`/`fireEvent` + `@testing-library/jest-dom` matchers (`toBeInTheDocument`, etc.) work.
+
+- [ ] **Step 1: Add dev dependencies**
+
+```bash
+cd /home/alexxxnikolskiy/projects/trading-office
+npm install -D -w apps/web @testing-library/react @testing-library/dom @testing-library/jest-dom @testing-library/user-event jsdom
+```
+(These are DEV dependencies — the Global Constraint forbids new *production* deps only.)
+
+- [ ] **Step 2: Configure Vitest for jsdom + tsx**
+
+In `apps/web/vite.config.ts`, update the `test` block to:
+
+```typescript
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: ['./src/test/setup.ts'],
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+  },
+```
+
+Create `apps/web/src/test/setup.ts`:
+
+```typescript
+import '@testing-library/jest-dom/vitest';
+```
+
+- [ ] **Step 3: Write a smoke test**
+
+Create `apps/web/src/test/smoke.test.tsx`:
+
+```tsx
+import { describe, it, expect } from 'vitest';
+import { render, screen } from '@testing-library/react';
+
+describe('component-test harness', () => {
+  it('renders a component into jsdom', () => {
+    render(<button>hello</button>);
+    expect(screen.getByRole('button', { name: 'hello' })).toBeInTheDocument();
+  });
+});
+```
+
+- [ ] **Step 4: Run the smoke test**
+
+Run: `npx vitest run apps/web/src/test/smoke.test.tsx`
+Expected: PASS (proves jsdom env, tsx inclusion, and jest-dom matchers all work).
+
+- [ ] **Step 5: Confirm existing `.test.ts` still pass under the new env**
+
+Run: `npx vitest run -w apps/web` (or the repo's web test script)
+Expected: the existing web suite stays green under `environment: 'jsdom'`.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add apps/web/package.json apps/web/vite.config.ts apps/web/src/test/setup.ts apps/web/src/test/smoke.test.tsx package-lock.json
+git commit -m "test(office/web): add RTL + jsdom component-test harness"
+```
+
+> Note: depending on the repo's lockfile/workspace layout the changed lockfile may be `package-lock.json` at the root; stage whichever lockfile the install touched.
+
+---
+
 ### Task B7: `AgentActivityPanel` — Logs | Traces tabs + trace tree
+
+> **Depends on Task B6a** — the RTL + jsdom harness (`environment: 'jsdom'`, `.test.tsx` included, `@testing-library/jest-dom` matchers) is in place. The tests below use `render`/`screen`/`fireEvent` and may use `toBeInTheDocument()`.
 
 **Files:**
 - Create: `apps/web/src/floor/panels/AgentTracesView.tsx` (the Traces-tab body — list + expandable span tree + reason-code states)
@@ -1306,7 +1385,7 @@ git commit -m "style(office/web): trace tab + span-tree styling"
 ## Self-review notes (coverage map)
 
 - Spec decision 1 (via trading-lab) → Tasks A1–A6 (lab owns reader+endpoint), B2–B5 (office consumes via existing seam).
-- Spec decision 2 (Traces tab) → Task B7.
+- Spec decision 2 (Traces tab) → Task B7 (component-test infra added in B6a).
 - Spec decision 3 (list + expandable span tree) → Tasks A3 (DTO/grouping), B7 (`SpanTree`/`TraceRow`).
 - Spec decision 4 (on-demand REST) → `useResource` fetch on tab open (B7); no streaming added.
 - Spec decision 5 (empty ≠ gap, typed reason codes) → A4 (reader), A5 (200 pass-through), B1 (schema enum), B3 (no-source → no-traces), B7 (reason-code rendering).
