@@ -1,13 +1,13 @@
 import type { OfficeReadConnector } from './OfficeReadConnector';
 import type {
-  OfficeEvent, AgentStatusMap, AgentActivity, Hypothesis, BacktestSummary, BotHealth, KnowledgeEntry, InfraStatus,
+  OfficeEvent, AgentStatusMap, AgentActivity, AgentTraces, Hypothesis, BacktestSummary, BotHealth, KnowledgeEntry, InfraStatus,
 } from '@trading-office/office-gateway';
 import type { TradingLabReadConnector } from './tradinglab/TradingLabReadConnector';
 import type { InfraAggregator } from './InfraAggregator';
 import type { PlatformMonitoringConnector } from './platform/PlatformMonitoringConnector';
 
 export interface CompositeDeps {
-  read: Pick<TradingLabReadConnector, 'getAgentStatuses' | 'getAgentActivity' | 'getHypotheses' | 'getBacktests'>;
+  read: Pick<TradingLabReadConnector, 'getAgentStatuses' | 'getAgentActivity' | 'getAgentTraces' | 'getHypotheses' | 'getBacktests'>;
   infra: Pick<InfraAggregator, 'getInfraStatus'>;
   /** M2 injects the real SSE bridge; M1 passes a no-op. */
   startBridge: (emit: (e: OfficeEvent) => void) => () => void;
@@ -19,6 +19,7 @@ export class CompositeOfficeReadConnector implements OfficeReadConnector {
 
   getAgentStatuses(): Promise<AgentStatusMap> { return this.deps.read.getAgentStatuses(); }
   getAgentActivity(agentId: string): Promise<AgentActivity> { return this.deps.read.getAgentActivity(agentId); }
+  getAgentTraces(agentId: string): Promise<AgentTraces> { return this.deps.read.getAgentTraces(agentId); }
   getHypotheses(): Promise<Hypothesis[]> { return this.deps.read.getHypotheses(); }
   getBacktests(): Promise<BacktestSummary[]> { return this.deps.read.getBacktests(); }
 

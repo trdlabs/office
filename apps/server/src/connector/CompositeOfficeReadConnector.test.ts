@@ -32,4 +32,10 @@ describe('CompositeOfficeReadConnector', () => {
     off();
     expect(stop).toHaveBeenCalledOnce();
   });
+  it('delegates getAgentTraces to the lab read connector', async () => {
+    const read = { getAgentTraces: vi.fn(async () => ({ agentId: 'analyst', reasonCode: null, traces: [] })) };
+    const c = new CompositeOfficeReadConnector({ read: read as never, infra: infra as never, startBridge: () => () => {} });
+    await c.getAgentTraces('analyst');
+    expect(read.getAgentTraces).toHaveBeenCalledWith('analyst');
+  });
 });
