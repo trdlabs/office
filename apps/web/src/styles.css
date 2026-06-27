@@ -205,7 +205,46 @@ body {
 .row { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0; }
 .tag { font-size: 11px; padding: 1px 6px; border-radius: 4px; background: var(--panel-edge); color: var(--ink); }
 .status-pill { font-size: 11px; padding: 1px 7px; border-radius: 9px; background: #10131d; border: 1px solid var(--panel-edge); }
+.status-pill--ok { border-color: var(--accent); color: var(--accent); }
+.status-pill--error { border-color: var(--danger); color: var(--danger); }
 .trace { font-family: var(--mono); font-size: 11px; line-height: 1.5; white-space: pre-wrap; }
+
+/* ================================================== trace panel (tabs & tree) */
+.tabs { display: flex; flex-direction: row; gap: 0; border-bottom: 1px solid var(--panel-edge); overflow-x: auto; }
+[role="tab"] {
+  padding: 8px 12px; font-size: 12px; background: transparent; border: 0;
+  color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent;
+  transition: color 0.12s ease, border-color 0.12s ease;
+}
+[role="tab"]:hover { color: var(--ink); }
+[role="tab"][aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
+
+.trace__row {
+  display: flex; gap: 12px; padding: 6px 8px; background: transparent;
+  border: 0; cursor: pointer; width: 100%; align-items: center;
+  font-family: var(--mono); font-size: 11px; color: var(--ink);
+  border-bottom: 1px solid rgba(42, 49, 66, 0.4); text-align: left;
+  transition: background 0.08s ease;
+}
+.trace__row:hover { background: rgba(42, 49, 66, 0.3); }
+.trace__row:active { transform: none; }
+
+.trace__item { display: flex; flex-direction: column; gap: 1px; padding: 4px 0; }
+.trace__span { font-family: var(--mono); font-size: 11px; color: var(--ink); }
+.trace__tree { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+
+.trace__kind {
+  font-size: 10px; padding: 1px 5px; border-radius: 3px;
+  background: var(--panel-edge); color: var(--ink); text-transform: uppercase;
+  letter-spacing: 0.05em; flex: 0 0 auto;
+}
+.trace__kind--agent { background: rgba(89, 247, 212, 0.16); color: var(--accent); }
+.trace__kind--llm { background: rgba(255, 209, 102, 0.16); color: var(--warn); }
+.trace__kind--tool { background: rgba(255, 107, 107, 0.16); color: var(--danger); }
+.trace__kind--chain { background: rgba(159, 176, 204, 0.16); color: var(--muted); }
+
+.trace__lat { color: var(--muted); font-size: 11px; }
+.trace__err { color: var(--danger); font-size: 11px; }
 
 /* ======================================================== chat (AI-style) */
 .chat { display: flex; flex-direction: column; height: 100%; min-height: 0; }
