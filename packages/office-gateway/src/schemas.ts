@@ -49,11 +49,6 @@ export const agentTracesSchema = z.object({
   traces: z.array(traceSchema),
 });
 
-export type TraceReasonCode = z.infer<typeof traceReasonCodeSchema>;
-export type TraceSpan = z.infer<typeof traceSpanSchema>;
-export type Trace = z.infer<typeof traceSchema>;
-export type AgentTraces = z.infer<typeof agentTracesSchema>;
-
 export const hypothesisSchema = z.object({
   id: z.string(),
   title: z.string(),
