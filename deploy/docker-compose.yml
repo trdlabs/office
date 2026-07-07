@@ -10,7 +10,7 @@
 name: trading-office-demo
 services:
   office-server:
-    image: ghcr.io/alexnikolskiy/trading-office-server:${OFFICE_IMAGE_TAG:-latest}
+    image: ghcr.io/trdlabs/trading-office-server:${OFFICE_IMAGE_TAG:-latest}
     environment:
       OFFICE_SERVER_PORT: "8787"
       # Must match the origin the browser loads the web app from (office-web below).
@@ -22,7 +22,7 @@ services:
     restart: unless-stopped
 
   office-web:
-    image: ghcr.io/alexnikolskiy/trading-office-web:${OFFICE_IMAGE_TAG:-latest}
+    image: ghcr.io/trdlabs/trading-office-web:${OFFICE_IMAGE_TAG:-latest}
     ports:
       - "8080:80"
     depends_on:
