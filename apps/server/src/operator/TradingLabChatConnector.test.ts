@@ -49,4 +49,16 @@ describe('TradingLabChatConnector', () => {
     const c = new TradingLabChatConnector({ chatUrl: 'http://lab:3000', chatToken: 'tok', requestTimeoutMs: 1000, fetchImpl });
     await expect(c.confirm({ pendingInteractionId: 'p', sessionId: 's', decision: 'confirm' })).rejects.toMatchObject({ office: { code: 'upstream_unauthorized' } });
   });
+
+  it('maps 429 to upstream_rate_limited (throttled — distinct from a bad request)', async () => {
+    const fetchImpl = vi.fn(async () => new Response('{}', { status: 429 }));
+    const c = new TradingLabChatConnector({ ...cfg, fetchImpl });
+    await expect(c.send({ message: 'x', sessionId: 's' })).rejects.toMatchObject({ office: { code: 'upstream_rate_limited' } });
+  });
+
+  it('confirm() maps 429 to upstream_rate_limited', async () => {
+    const fetchImpl = (async () => new Response('', { status: 429 })) as unknown as typeof fetch;
+    const c = new TradingLabChatConnector({ chatUrl: 'http://lab:3000', chatToken: 'tok', requestTimeoutMs: 1000, fetchImpl });
+    await expect(c.confirm({ pendingInteractionId: 'p', sessionId: 's', decision: 'confirm' })).rejects.toMatchObject({ office: { code: 'upstream_rate_limited' } });
+  });
 });

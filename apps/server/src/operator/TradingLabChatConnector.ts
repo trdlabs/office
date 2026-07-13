@@ -1,7 +1,7 @@
 import type { LabChatResponse } from '../connector/tradinglab/labDtos';
 
 export interface ChatUpstreamError extends Error {
-  office: { code: 'upstream_unavailable' | 'upstream_unauthorized' | 'upstream_bad_request'; message: string };
+  office: { code: 'upstream_unavailable' | 'upstream_unauthorized' | 'upstream_rate_limited' | 'upstream_bad_request'; message: string };
 }
 const makeErr = (code: ChatUpstreamError['office']['code'], message: string): ChatUpstreamError =>
   Object.assign(new Error(message), { office: { code, message } }) as ChatUpstreamError;
@@ -47,6 +47,7 @@ export class TradingLabChatConnector {
     }
     if (res.status === 401 || res.status === 403) throw makeErr('upstream_unauthorized', `chat ingress returned ${res.status}`);
     if (res.status === 503) throw makeErr('upstream_unavailable', 'chat ingress not configured');
+    if (res.status === 429) throw makeErr('upstream_rate_limited', 'chat ingress rate-limited the request');
     if (res.status >= 500) throw makeErr('upstream_unavailable', `chat ingress returned ${res.status}`);
     if (res.status >= 400) throw makeErr('upstream_bad_request', `chat ingress returned ${res.status}`);
     return (await res.json()) as LabChatResponse;
@@ -70,6 +71,7 @@ export class TradingLabChatConnector {
     }
     if (res.status === 401 || res.status === 403) throw makeErr('upstream_unauthorized', `chat confirm returned ${res.status}`);
     if (res.status === 503) throw makeErr('upstream_unavailable', 'chat ingress not configured');
+    if (res.status === 429) throw makeErr('upstream_rate_limited', 'chat ingress rate-limited the request');
     if (res.status >= 500) throw makeErr('upstream_unavailable', `chat confirm returned ${res.status}`);
     if (res.status >= 400) throw makeErr('upstream_bad_request', `chat confirm returned ${res.status}`);
     return (await res.json()) as LabChatResponse;
