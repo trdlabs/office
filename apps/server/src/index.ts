@@ -12,6 +12,8 @@ import type { OperatorResponder, OperatorConfirmResponder } from './operator/Tra
 import { createDownstreamBacktestWatcher } from './operator/DownstreamBacktestWatcher';
 import type { DownstreamBacktestWatcher } from './operator/DownstreamBacktestWatcher';
 import { renderCompletionSummary } from './operator/completionSummaryRender';
+import { createScorecardFollower, type ScorecardFollower } from './operator/ScorecardFollower';
+import { makeRunCycleFanout } from './operator/runCycleFanout';
 
 const nowIso = (): string => new Date().toISOString();
 
@@ -28,6 +30,7 @@ const heartbeat = setInterval(() => {
 let operatorResponder: OperatorResponder | undefined;
 let operatorConfirmResponder: OperatorConfirmResponder | undefined;
 let backtestWatcher: DownstreamBacktestWatcher | undefined;
+let scorecardFollower: ScorecardFollower | undefined;
 if (wiring) {
   if (config.tradingLab.chatToken) {
     const chat = new TradingLabChatConnector({
@@ -48,10 +51,22 @@ if (wiring) {
           guards: config.downstreamBacktests,
         })
       : undefined;
+    scorecardFollower = config.cycleScorecard.enabled
+      ? createScorecardFollower({
+          bridge: wiring.bridge,
+          client: {
+            getAgentEvents: (q) => wiring!.client.getAgentEvents(q).then((env) => env.data),
+            getScorecardMarkdown: (path) => wiring!.client.getScorecardMarkdown(path),
+          },
+          bus,
+          newIds: () => defaultNewIds()(),
+          guards: config.cycleScorecard.guards,
+        })
+      : undefined;
     const responderDeps = {
       chat, client: wiring.client, bridge: wiring.bridge, guards: config.chatFollow,
       completionSummaryEnabled: config.chatFollow.completionSummaryEnabled,
-      onRunCycleTask: backtestWatcher ? (taskId: string, cid: string) => backtestWatcher!.register(taskId, cid) : undefined,
+      onRunCycleTask: makeRunCycleFanout([backtestWatcher, scorecardFollower]),
     };
     operatorResponder = makeTradingLabOperatorResponder(responderDeps);
     operatorConfirmResponder = makeTradingLabOperatorConfirmResponder(responderDeps);
@@ -70,6 +85,7 @@ const shutdown = (): void => {
   clearInterval(heartbeat);
   stopConnector();
   backtestWatcher?.stop();
+  scorecardFollower?.stop();
   server.close();
   process.exit(0);
 };

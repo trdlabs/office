@@ -81,6 +81,23 @@ describe('loadConfig', () => {
     expect(c.downstreamBacktests.summaryIntervalMs).toBe(500);
   });
 
+  it('cycleScorecard defaults: disabled, sane guards', () => {
+    const c = loadConfig({});
+    expect(c.cycleScorecard.enabled).toBe(false);
+    expect(c.cycleScorecard.guards.ttlMs).toBe(3_600_000);
+    expect(c.cycleScorecard.guards.fetchRetries).toBe(3);
+  });
+  it('OPERATOR_CYCLE_SCORECARD only enables in trading-lab mode', () => {
+    expect(loadConfig({ OPERATOR_CYCLE_SCORECARD: 'true' }).cycleScorecard.enabled).toBe(false); // fixture mode
+    const c = loadConfig({ OPERATOR_CYCLE_SCORECARD: 'true', OFFICE_CONNECTOR_MODE: 'trading-lab', TRADING_LAB_READ_URL: 'http://l', TRADING_LAB_READ_TOKEN: 't' });
+    expect(c.cycleScorecard.enabled).toBe(true);
+  });
+  it('scorecard guards read from env', () => {
+    const c = loadConfig({ OFFICE_SCORECARD_TTL_MS: '5000', OFFICE_SCORECARD_FETCH_RETRIES: '1' });
+    expect(c.cycleScorecard.guards.ttlMs).toBe(5000);
+    expect(c.cycleScorecard.guards.fetchRetries).toBe(1);
+  });
+
   describe('operator auth', () => {
     it('is disabled when no operator password is set (open, as before)', () => {
       expect(loadConfig({}).auth.enabled).toBe(false);
