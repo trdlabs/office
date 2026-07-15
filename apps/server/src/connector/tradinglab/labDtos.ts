@@ -110,7 +110,7 @@ export interface LabCompletionMetrics {
   netPnlUsd: number | null; netPnlPct: number | null; winRate: number | null;
   profitFactor: number | null; maxDrawdownPct: number | null; sharpe: number | null; totalTrades: number | null;
 }
-export interface LabSummaryLinks { taskId: string; profileId?: string; hypothesisId?: string; backtestRunId?: string }
+export interface LabSummaryLinks { taskId: string; profileId?: string; hypothesisId?: string; backtestRunId?: string; scorecardUrl?: string }
 export type LabCompletionDecision = 'PASS' | 'FAIL' | 'MODIFY' | 'INCONCLUSIVE' | 'PAPER_CANDIDATE';
 
 export type LabCompletionSummary =
