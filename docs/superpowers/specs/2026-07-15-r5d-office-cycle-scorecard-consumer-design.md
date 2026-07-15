@@ -96,27 +96,32 @@ interface ScorecardFollower {
 #### State
 
 - `stopped: boolean` — set by `stop()`. Every async continuation (after each `await` in bootstrap/resolve/retry) and every timer-arm / publish checks it and bails, so a shutdown mid-flight cannot arm a new timer or publish after teardown (see the stop-safety invariant).
-- `pendingByTask: Set<anchorTaskId>` — in-flight bootstraps (a repeat `register()` before bootstrap finishes must NOT start a second bootstrap).
+- `pendingByTask: Set<anchorTaskId>` — bootstrap in flight. A repeat `register()` before bootstrap finishes must NOT start a second bootstrap.
+- `activeByTask: Set<anchorTaskId>` — a live `Reg` exists for this anchor (post-bootstrap, pre-terminal). Without it, a repeat `register()` between "bootstrap removed the anchor from `pendingByTask`" and "the cycle completes" would start a second bootstrap. Cleared by `complete()`.
 - `byCorrelation: Map<correlationId, Reg>` where
   `Reg = { anchorTaskId; conversationId; correlationId; state: 'idle' | 'fetching' | 'done'; resolveRequested: boolean; expired: boolean; ttlTimer }`.
-- `doneByTask: Set<anchorTaskId>` — **bounded** (LRU/FIFO cap) terminal marker per anchor. A `register` short-circuits when its `anchorTaskId` is in `doneByTask` (or `pendingByTask`). This covers cycles that terminated at **bootstrap exhaustion**, where no `correlationId` was ever learned.
+- `doneByTask: Set<anchorTaskId>` — **bounded** (LRU/FIFO cap) terminal marker per anchor. Covers cycles that terminated at **bootstrap exhaustion**, where no `correlationId` was ever learned.
 - `doneByCorrelation: Set<correlationId>` — **bounded** (LRU/FIFO cap) terminal marker per cycle, so a replayed event or a repeat `register` for an already-published cycle cannot re-publish.
+
+A `register` short-circuits when its `anchorTaskId` is in `pendingByTask ∪ activeByTask ∪ doneByTask`.
 
 #### `complete(reg, text)` — the single terminal helper
 
-Every terminal transition (success, permanent, TTL, and — via its own path — bootstrap exhaustion) goes through one helper so the maps never leak and publish happens once:
+Every terminal transition (success, permanent, TTL, and — via its own path — bootstrap exhaustion) goes through one helper so the maps never leak and publish happens once. It records the terminal state **first**, before any publish, because `OfficeEventBus.publish` is synchronous and a subscriber exception must not strand the reg as `fetching` or leak it in the maps:
 
 ```
 complete(reg, text):
-  if stopped: return
-  publish(reg.conversationId, text)          // one operator message
   clearTimeout(reg.ttlTimer)
-  byCorrelation.delete(reg.correlationId)     // <-- explicit removal; the bounded set is not the map cap
-  doneByCorrelation.add(reg.correlationId)    // bounded
-  doneByTask.add(reg.anchorTaskId)            // bounded
+  reg.state = 'done'
+  byCorrelation.delete(reg.correlationId)     // explicit removal; the bounded set is not the map cap
+  activeByTask.delete(reg.anchorTaskId)
+  doneByCorrelation.add(reg.correlationId)     // bounded
+  doneByTask.add(reg.anchorTaskId)             // bounded
+  if stopped: return
+  try { publish(reg.conversationId, text) } catch { /* subscriber threw — terminal already recorded */ }
 ```
 
-`register`/event lookups treat "in `doneBy*`" as "already handled → no-op". `byCorrelation` therefore holds only live (idle/fetching) registrations.
+Bootstrap exhaustion follows the same order: `doneByTask.add(anchorTaskId)` first, then a best-effort `try { publish } catch`. `register`/event lookups treat "in `doneBy*`/`activeByTask`" as "already handled → no-op". `byCorrelation` therefore holds only live (idle/fetching) registrations.
 
 #### Lifecycle
 

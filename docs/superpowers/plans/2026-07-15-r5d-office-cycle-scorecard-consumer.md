@@ -165,15 +165,22 @@ it('getScorecardMarkdown: 200 non-markdown content-type -> permanent', async () 
   const client = makeClient(async () => new Response('<html>', { status: 200, headers: { 'content-type': 'text/html' } }));
   expect(await client.getScorecardMarkdown(buildScorecardPath('c1'))).toEqual({ kind: 'permanent' });
 });
+it('getScorecardMarkdown: 200 text/markdown with charset param -> ok (MIME normalized)', async () => {
+  const client = makeClient(async () => new Response('# ok', { status: 200, headers: { 'content-type': 'text/markdown; charset=utf-8' } }));
+  expect(await client.getScorecardMarkdown(buildScorecardPath('c1'))).toEqual({ kind: 'ok', markdown: '# ok' });
+});
 it('getScorecardMarkdown: sends accept text/markdown + bearer + readUrl prefix', async () => {
-  let seenUrl = ''; let seenAccept = '';
+  let seenUrl = ''; let seenAccept = ''; let seenAuth = '';
   const client = makeClient(async (url: string, init: RequestInit) => {
-    seenUrl = url; seenAccept = (init.headers as Record<string,string>).accept;
+    seenUrl = url;
+    const h = init.headers as Record<string, string>;
+    seenAccept = h.accept; seenAuth = h.Authorization;
     return new Response('# ok', { status: 200, headers: { 'content-type': 'text/markdown' } });
   });
   await client.getScorecardMarkdown(buildScorecardPath('c1'));
   expect(seenUrl.endsWith('/v1/cycles/c1/scorecard?format=markdown')).toBe(true);
   expect(seenAccept).toBe('text/markdown');
+  expect(seenAuth).toBe('Bearer t'); // makeClient uses readToken:'t'
 });
 ```
 
@@ -215,8 +222,8 @@ export type ScorecardFetchResult =
     if (res.status === 401 || res.status === 403) return { kind: 'permanent' };
     if (res.status >= 500) return { kind: 'transient' };
     if (res.status >= 400) return { kind: 'permanent' };
-    const ct = res.headers.get('content-type') ?? '';
-    if (!ct.includes('text/markdown')) return { kind: 'permanent' }; // misrouted/HTML must not be published as a scorecard
+    const mime = (res.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase();
+    if (mime !== 'text/markdown') return { kind: 'permanent' }; // misrouted/HTML must not be published as a scorecard
     try {
       return { kind: 'ok', markdown: await res.text() };
     } catch {
@@ -254,144 +261,225 @@ git commit -m "feat(r5d): TradingLabHttpClient.getScorecardMarkdown with ok/not_
 
 - [ ] **Step 1: Write the failing tests**
 
-Create `apps/server/src/operator/ScorecardFollower.test.ts`. Use fake timers and controllable fakes:
+Create `apps/server/src/operator/ScorecardFollower.test.ts`. **Timer discipline:** bootstrap/fetch retries use the injected no-op `sleep`, so the ONLY real timer is the `ttlMs` `ttlTimer`. Drive async progress with a microtask `flush()` (never `vi.runAllTimersAsync()`, which would fire the TTL and publish `unavailable` prematurely); advance the fake clock past `ttlMs` ONLY in TTL tests. For genuine in-flight states (coalesced wake-up, TTL-during-fetch, stop-during-fetch) the fetch must be a **deferred** promise the test resolves on cue — an already-resolved fetch never lets an event land in `state:'fetching'`.
 
 ```ts
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { createScorecardFollower } from './ScorecardFollower';
+import { createScorecardFollower, type ScorecardFollowerDeps } from './ScorecardFollower';
 import type { ScorecardFetchResult } from '../connector/tradinglab/TradingLabHttpClient';
 import type { LabAgentEvent } from '../connector/tradinglab/labDtos';
 
 const GUARDS = { bootstrapRetries: 2, bootstrapIntervalMs: 10, ttlMs: 1000, fetchRetries: 2, fetchIntervalMs: 10 };
+const flush = async () => { for (let i = 0; i < 50; i++) await Promise.resolve(); }; // microtasks only — no TTL
+function deferred<T>() { let resolve!: (v: T) => void; const promise = new Promise<T>((r) => { resolve = r; }); return { promise, resolve }; }
+const evt = (taskId: string, cid: string, type = 'x'): LabAgentEvent => ({ id: 'e', ts: 't', type, taskId, correlationId: cid, level: 'info', summary: '' });
+const built = (cid: string): LabAgentEvent => evt('tk', cid, 'cycle.scorecard.built');
 
 function makeHarness(opts: {
-  events?: (taskId: string) => LabAgentEvent[];
-  fetch?: () => ScorecardFetchResult;
+  events?: (taskId: string) => Promise<LabAgentEvent[]> | LabAgentEvent[];
+  fetch?: () => Promise<ScorecardFetchResult>;
+  throwOnPublish?: boolean;
 } = {}) {
   const published: { conversationId: string; text: string }[] = [];
   let onEvent: (e: LabAgentEvent) => void = () => {};
-  const fetchSeq: ScorecardFetchResult[] = [];
-  const follower = createScorecardFollower({
+  let getEventsCalls = 0;
+  let fetchCalls = 0;
+  const deps: ScorecardFollowerDeps = {
     bridge: { subscribeAppended: (cb) => { onEvent = cb; return () => {}; } },
     client: {
-      getAgentEvents: async ({ taskId }) => (opts.events ? opts.events(taskId) : [{ id: 'e', ts: 't', type: 'x', taskId, correlationId: 'corr-1', level: 'info', summary: '' }]),
-      getScorecardMarkdown: async () => (fetchSeq.length ? fetchSeq.shift()! : (opts.fetch ? opts.fetch() : { kind: 'not_found' })),
+      getAgentEvents: async ({ taskId }) => { getEventsCalls++; return opts.events ? opts.events(taskId) : [evt(taskId, 'corr-1')]; },
+      getScorecardMarkdown: async () => { fetchCalls++; return opts.fetch ? opts.fetch() : { kind: 'not_found' }; },
     },
-    bus: { publish: (e: any) => published.push({ conversationId: e.conversationId, text: e.reply.text }) },
+    bus: { publish: (e: any) => { if (opts.throwOnPublish) throw new Error('subscriber blew up'); published.push({ conversationId: e.conversationId, text: e.reply.text }); } },
     newIds: () => ({ operatorMessageId: 'op', replyMessageId: 'rp' }),
-    guards: GUARDS,
-    now: () => '2026-07-15T00:00:00.000Z',
-    sleep: async () => {},
-  });
-  return { follower, published, emit: (e: LabAgentEvent) => onEvent(e), fetchSeq };
+    guards: GUARDS, now: () => 't', sleep: async () => {},
+  };
+  const follower = createScorecardFollower(deps);
+  return { follower, published, emit: (e: LabAgentEvent) => onEvent(e), getEventsCalls: () => getEventsCalls, fetchCalls: () => fetchCalls };
 }
-const builtEvent = (cid: string): LabAgentEvent => ({ id: 'b', ts: 't', type: 'cycle.scorecard.built', taskId: 'tk', correlationId: cid, level: 'info', summary: '' });
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 
 it('happy path: bootstrap -> event -> ok -> publishes scorecard once', async () => {
-  const h = makeHarness();
-  h.fetchSeq.push({ kind: 'not_found' }); // recovery probe
-  h.fetchSeq.push({ kind: 'ok', markdown: '## SC' }); // on event
+  const seq: ScorecardFetchResult[] = [{ kind: 'not_found' }, { kind: 'ok', markdown: '## SC' }];
+  const h = makeHarness({ fetch: async () => seq.shift()! });
   h.follower.register('anchor-1', 'conv-1');
-  await vi.runAllTimersAsync(); // finish bootstrap + recovery probe
-  h.emit(builtEvent('corr-1'));
-  await vi.runAllTimersAsync();
+  await flush(); // bootstrap + recovery probe (not_found) -> idle; TTL NOT fired
+  expect(h.published).toHaveLength(0);
+  h.emit(built('corr-1'));
+  await flush();
   expect(h.published).toEqual([{ conversationId: 'conv-1', text: '## SC' }]);
 });
 
 it('recovery probe wins: scorecard already exists before the live event', async () => {
-  const h = makeHarness({ fetch: () => ({ kind: 'ok', markdown: '## early' }) });
+  const h = makeHarness({ fetch: async () => ({ kind: 'ok', markdown: '## early' }) });
   h.follower.register('anchor-1', 'conv-1');
-  await vi.runAllTimersAsync();
+  await flush();
   expect(h.published).toEqual([{ conversationId: 'conv-1', text: '## early' }]);
 });
 
 it('replayed event and duplicate register do not re-publish', async () => {
-  const h = makeHarness({ fetch: () => ({ kind: 'ok', markdown: '## SC' }) });
+  const h = makeHarness({ fetch: async () => ({ kind: 'ok', markdown: '## SC' }) });
   h.follower.register('anchor-1', 'conv-1');
-  await vi.runAllTimersAsync();
-  h.emit(builtEvent('corr-1'));           // replay
-  h.follower.register('anchor-1', 'conv-1'); // duplicate
-  await vi.runAllTimersAsync();
+  await flush();
+  h.emit(built('corr-1'));                    // replay after done
+  h.follower.register('anchor-1', 'conv-1');  // duplicate register after done
+  await flush();
   expect(h.published).toHaveLength(1);
 });
 
-it('bootstrap exhaustion publishes unavailable once and tombstones the anchor', async () => {
+it('bootstrap exhaustion publishes unavailable once, tombstones anchor, no second bootstrap', async () => {
   const h = makeHarness({ events: () => [] }); // never yields correlationId
   h.follower.register('anchor-1', 'conv-1');
-  await vi.runAllTimersAsync();
+  await flush();
   expect(h.published).toEqual([{ conversationId: 'conv-1', text: expect.stringContaining('недоступ') }]);
-  h.follower.register('anchor-1', 'conv-1'); // no re-bootstrap
-  await vi.runAllTimersAsync();
+  const callsAfterFirst = h.getEventsCalls();
+  h.follower.register('anchor-1', 'conv-1'); // must be a no-op (doneByTask)
+  await flush();
   expect(h.published).toHaveLength(1);
+  expect(h.getEventsCalls()).toBe(callsAfterFirst); // no re-bootstrap
+});
+
+it('two register(sameTask) before bootstrap completes -> exactly one bootstrap', async () => {
+  const gate = deferred<LabAgentEvent[]>();
+  const h = makeHarness({ events: () => gate.promise });
+  h.follower.register('anchor-1', 'conv-1');
+  h.follower.register('anchor-1', 'conv-1'); // second must be dropped by pendingByTask
+  expect(h.getEventsCalls()).toBe(1);        // only one bootstrap loop started its first getAgentEvents
+  gate.resolve([evt('anchor-1', 'corr-1')]);
+  await flush();
+  expect(h.getEventsCalls()).toBe(1);
+});
+
+it('successful bootstrap blocks a repeat register before completion (activeByTask)', async () => {
+  const fetchGate = deferred<ScorecardFetchResult>();
+  const h = makeHarness({ fetch: () => fetchGate.promise });
+  h.follower.register('anchor-1', 'conv-1');
+  await flush(); // bootstrap done, recovery probe now awaiting fetchGate (state='fetching')
+  const callsAfterBootstrap = h.getEventsCalls();
+  h.follower.register('anchor-1', 'conv-1'); // must be a no-op (activeByTask), NOT a second bootstrap
+  await flush();
+  expect(h.getEventsCalls()).toBe(callsAfterBootstrap);
+  fetchGate.resolve({ kind: 'ok', markdown: '## SC' });
+  await flush();
+  expect(h.published).toEqual([{ conversationId: 'conv-1', text: '## SC' }]);
 });
 
 it('TTL with no event publishes unavailable once', async () => {
-  const h = makeHarness({ fetch: () => ({ kind: 'not_found' }) });
+  const h = makeHarness({ fetch: async () => ({ kind: 'not_found' }) });
   h.follower.register('anchor-1', 'conv-1');
-  await vi.runAllTimersAsync(); // bootstrap + recovery probe (not_found) -> idle
+  await flush(); // recovery probe not_found -> idle
+  expect(h.published).toHaveLength(0);
   await vi.advanceTimersByTimeAsync(GUARDS.ttlMs + 1);
   expect(h.published).toEqual([{ conversationId: 'conv-1', text: expect.stringContaining('недоступ') }]);
 });
 
 it('permanent error publishes unavailable once, no retry', async () => {
-  const h = makeHarness({ fetch: () => ({ kind: 'permanent' }) });
+  const h = makeHarness({ fetch: async () => ({ kind: 'permanent' }) });
   h.follower.register('anchor-1', 'conv-1');
-  await vi.runAllTimersAsync();
+  await flush();
   expect(h.published).toEqual([{ conversationId: 'conv-1', text: expect.stringContaining('недоступ') }]);
+  expect(h.fetchCalls()).toBe(1); // permanent is not retried
 });
 
 it('transient then ok within fetchRetries publishes scorecard', async () => {
-  const h = makeHarness();
-  h.fetchSeq.push({ kind: 'transient' });          // recovery probe attempt 1
-  h.fetchSeq.push({ kind: 'ok', markdown: '## SC' }); // retry
+  const seq: ScorecardFetchResult[] = [{ kind: 'transient' }, { kind: 'ok', markdown: '## SC' }];
+  const h = makeHarness({ fetch: async () => seq.shift()! });
   h.follower.register('anchor-1', 'conv-1');
-  await vi.runAllTimersAsync();
+  await flush();
   expect(h.published).toEqual([{ conversationId: 'conv-1', text: '## SC' }]);
 });
 
-it('coalesced wake-up: event during an in-flight not_found fetch is honored', async () => {
-  // recovery probe resolves not_found; an event arrives during it; follower re-resolves -> ok
-  const h = makeHarness();
-  h.fetchSeq.push({ kind: 'not_found' }); // recovery probe
-  h.fetchSeq.push({ kind: 'ok', markdown: '## SC' }); // re-resolve triggered by coalesced event
+it('transient-exhausted -> idle -> a later event wakes the follower to success', async () => {
+  let phase: 'exhaust' | 'ok' = 'exhaust';
+  const h = makeHarness({ fetch: async () => (phase === 'exhaust' ? { kind: 'transient' } : { kind: 'ok', markdown: '## SC' }) });
   h.follower.register('anchor-1', 'conv-1');
-  // let bootstrap complete, then emit while the recovery probe is resolving
-  await vi.advanceTimersByTimeAsync(GUARDS.bootstrapIntervalMs * (GUARDS.bootstrapRetries + 1));
-  h.emit(builtEvent('corr-1'));
-  await vi.runAllTimersAsync();
+  await flush(); // probe: transient x (fetchRetries+1) -> idle, no publish
+  expect(h.published).toHaveLength(0);
+  phase = 'ok';
+  h.emit(built('corr-1'));
+  await flush();
   expect(h.published).toEqual([{ conversationId: 'conv-1', text: '## SC' }]);
+});
+
+it('coalesced wake-up: event during a real in-flight not_found fetch is honored', async () => {
+  const probe = deferred<ScorecardFetchResult>();
+  let n = 0;
+  const h = makeHarness({ fetch: () => { n++; return n === 1 ? probe.promise : Promise.resolve({ kind: 'ok', markdown: '## SC' }); } });
+  h.follower.register('anchor-1', 'conv-1');
+  await flush(); // bootstrap done; recovery probe awaiting `probe` -> state='fetching'
+  h.emit(built('corr-1')); // arrives during fetch -> resolveRequested = true (no parallel fetch)
+  probe.resolve({ kind: 'not_found' });
+  await flush(); // resolve tail sees resolveRequested -> re-resolve -> ok -> publish
+  expect(h.published).toEqual([{ conversationId: 'conv-1', text: '## SC' }]);
+  expect(h.fetchCalls()).toBe(2);
+});
+
+it('TTL during a real in-flight fetch defers, then finalizes as unavailable (no orphan)', async () => {
+  const probe = deferred<ScorecardFetchResult>();
+  const h = makeHarness({ fetch: () => probe.promise });
+  h.follower.register('anchor-1', 'conv-1');
+  await flush(); // state='fetching', awaiting probe
+  await vi.advanceTimersByTimeAsync(GUARDS.ttlMs + 1); // onTtl during fetching -> expired=true, NO publish yet
+  expect(h.published).toHaveLength(0);
+  probe.resolve({ kind: 'not_found' });
+  await flush(); // finalize: expired -> complete(unavailable)
+  expect(h.published).toEqual([{ conversationId: 'conv-1', text: expect.stringContaining('недоступ') }]);
 });
 
 it('chained cycle: onboard anchor still bootstraps correlationId and publishes', async () => {
   const h = makeHarness({
-    events: (taskId) => (taskId === 'onboard-1' ? [{ id: 'e', ts: 't', type: 'strategy.onboard', taskId, correlationId: 'corr-1', level: 'info', summary: '' }] : []),
-    fetch: () => ({ kind: 'ok', markdown: '## SC' }),
+    events: (taskId) => (taskId === 'onboard-1' ? [evt('onboard-1', 'corr-1', 'strategy.onboard')] : []),
+    fetch: async () => ({ kind: 'ok', markdown: '## SC' }),
   });
   h.follower.register('onboard-1', 'conv-1');
-  await vi.runAllTimersAsync();
+  await flush();
   expect(h.published).toEqual([{ conversationId: 'conv-1', text: '## SC' }]);
 });
 
+it('cycle with zero downstream backtests: publishes purely from the built event', async () => {
+  // No backtest events anywhere; correlationId learned from a non-backtest event; only the
+  // cycle.scorecard.built event drives publication (the follower is independent of any backtest watcher).
+  const seq: ScorecardFetchResult[] = [{ kind: 'not_found' }, { kind: 'ok', markdown: '## SC' }];
+  const h = makeHarness({ events: () => [evt('anchor-1', 'corr-1', 'research.run_cycle.started')], fetch: async () => seq.shift()! });
+  h.follower.register('anchor-1', 'conv-1');
+  await flush();
+  h.emit(built('corr-1'));
+  await flush();
+  expect(h.published).toEqual([{ conversationId: 'conv-1', text: '## SC' }]);
+});
+
+it('subscriber exception in publish does not strand the reg (terminal recorded first)', async () => {
+  const h = makeHarness({ fetch: async () => ({ kind: 'ok', markdown: '## SC' }), throwOnPublish: true });
+  h.follower.register('anchor-1', 'conv-1');
+  await flush(); // complete() records terminal FIRST, then publish throws and is swallowed
+  const fetchesAfter = h.fetchCalls();
+  h.emit(built('corr-1'));                    // no live reg -> no-op
+  h.follower.register('anchor-1', 'conv-1');  // doneByTask -> no-op
+  await flush();
+  expect(h.fetchCalls()).toBe(fetchesAfter);  // no re-fetch; reg was not left 'fetching'
+});
+
 it('stop() during an in-flight bootstrap neither publishes nor arms a timer', async () => {
-  let resolveEvents!: (v: LabAgentEvent[]) => void;
-  const gate = new Promise<LabAgentEvent[]>((r) => { resolveEvents = r; });
-  const published: any[] = [];
-  let onEvent: (e: LabAgentEvent) => void = () => {};
-  const follower = createScorecardFollower({
-    bridge: { subscribeAppended: (cb) => { onEvent = cb; return () => {}; } },
-    client: { getAgentEvents: () => gate, getScorecardMarkdown: async () => ({ kind: 'ok', markdown: 'x' }) },
-    bus: { publish: (e: any) => published.push(e) },
-    newIds: () => ({ operatorMessageId: 'op', replyMessageId: 'rp' }),
-    guards: GUARDS, now: () => 't', sleep: async () => {},
-  });
-  follower.register('anchor-1', 'conv-1');
-  follower.stop();
-  resolveEvents([{ id: 'e', ts: 't', type: 'x', taskId: 'anchor-1', correlationId: 'corr-1', level: 'info', summary: '' }]);
-  await vi.runAllTimersAsync();
-  expect(published).toHaveLength(0);
+  const gate = deferred<LabAgentEvent[]>();
+  const h = makeHarness({ events: () => gate.promise });
+  h.follower.register('anchor-1', 'conv-1');
+  h.follower.stop();
+  gate.resolve([evt('anchor-1', 'corr-1')]);
+  await flush();
+  expect(h.published).toHaveLength(0);
+});
+
+it('stop() during an in-flight scorecard fetch does not publish', async () => {
+  const probe = deferred<ScorecardFetchResult>();
+  const h = makeHarness({ fetch: () => probe.promise });
+  h.follower.register('anchor-1', 'conv-1');
+  await flush(); // state='fetching', awaiting probe
+  h.follower.stop();
+  probe.resolve({ kind: 'ok', markdown: '## SC' });
+  await flush();
+  expect(h.published).toHaveLength(0);
 });
 ```
 
@@ -464,7 +552,8 @@ export function createScorecardFollower(deps: ScorecardFollowerDeps): ScorecardF
   const now = deps.now ?? (() => new Date().toISOString());
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
 
-  const pendingByTask = new Set<string>();
+  const pendingByTask = new Set<string>();   // bootstrap in flight (keyed by anchor)
+  const activeByTask = new Set<string>();     // live reg exists for this anchor (post-bootstrap, pre-terminal)
   const byCorrelation = new Map<string, Reg>();
   const doneByTask = boundedSet(DONE_CAP);
   const doneByCorrelation = boundedSet(DONE_CAP);
@@ -484,20 +573,23 @@ export function createScorecardFollower(deps: ScorecardFollowerDeps): ScorecardF
     } as OfficeEvent);
   }
 
-  // Single terminal helper: publish once, drop the live reg, record bounded tombstones.
+  // Single terminal helper. Records the terminal state FIRST (atomically, before any publish can
+  // throw), so a synchronous subscriber exception in bus.publish cannot strand the reg as 'fetching'
+  // or leak it in the maps. Publish is best-effort after the state is already terminal.
   function complete(reg: Reg, text: string): void {
-    if (stopped) return;
-    publish(reg.conversationId, text);
     if (reg.ttlTimer) clearTimeout(reg.ttlTimer);
     reg.state = 'done';
     byCorrelation.delete(reg.correlationId);
+    activeByTask.delete(reg.anchorTaskId);
     doneByCorrelation.add(reg.correlationId);
     doneByTask.add(reg.anchorTaskId);
+    if (stopped) return;
+    try { publish(reg.conversationId, text); } catch { /* subscriber threw — terminal already recorded */ }
   }
 
   function register(anchorTaskId: string, conversationId: string): void {
     if (stopped) return;
-    if (pendingByTask.has(anchorTaskId) || doneByTask.has(anchorTaskId)) return;
+    if (pendingByTask.has(anchorTaskId) || activeByTask.has(anchorTaskId) || doneByTask.has(anchorTaskId)) return;
     pendingByTask.add(anchorTaskId);
     void bootstrap(anchorTaskId, conversationId);
   }
@@ -514,16 +606,21 @@ export function createScorecardFollower(deps: ScorecardFollowerDeps): ScorecardF
     if (stopped) return;
     pendingByTask.delete(anchorTaskId);
     if (!correlationId) {
-      // Exhaustion: no correlationId ever seen -> honest terminal. Publish unavailable once and
-      // tombstone the anchor so a later re-register does not re-bootstrap.
+      // Exhaustion: no correlationId ever seen -> honest terminal. Tombstone the anchor FIRST so a
+      // later re-register does not re-bootstrap even if publish throws, then best-effort publish.
       doneByTask.add(anchorTaskId);
-      publish(conversationId, UNAVAILABLE_TEXT);
+      if (stopped) return;
+      try { publish(conversationId, UNAVAILABLE_TEXT); } catch { /* subscriber threw — terminal already recorded */ }
       return;
     }
-    if (byCorrelation.has(correlationId) || doneByCorrelation.has(correlationId)) return;
+    if (byCorrelation.has(correlationId) || doneByCorrelation.has(correlationId)) {
+      doneByTask.add(anchorTaskId); // this anchor is handled (another anchor owns the cycle)
+      return;
+    }
     const reg: Reg = { anchorTaskId, conversationId, correlationId, state: 'idle', resolveRequested: false, expired: false };
     reg.ttlTimer = setTimeout(() => onTtl(reg), guards.ttlMs);
     byCorrelation.set(correlationId, reg);
+    activeByTask.add(anchorTaskId);
     await resolve(reg); // recovery probe — covers an event that fired before/during bootstrap
   }
 
@@ -579,7 +676,7 @@ export function createScorecardFollower(deps: ScorecardFollowerDeps): ScorecardF
 - [ ] **Step 4: Run to verify pass + typecheck**
 
 Run: `npm test -w @trading-office/server -- src/operator/ScorecardFollower.test.ts`
-Expected: PASS (all cases: happy, recovery-probe, replay/dup, exhaustion, TTL, permanent, transient-retry, coalesced, chained, stop-safety).
+Expected: PASS (happy, recovery-probe, replay/dup, exhaustion+no-second-bootstrap, one-bootstrap-per-anchor, activeByTask-blocks-repeat, TTL-idle, permanent-no-retry, transient-retry, transient-exhausted→event, coalesced-wake-up, TTL-during-fetch, chained-onboard, zero-backtests, subscriber-exception, stop-during-bootstrap, stop-during-fetch).
 Run: `npm run typecheck -w @trading-office/server` → exit 0.
 
 - [ ] **Step 5: Commit**
@@ -658,7 +755,7 @@ In the `loadConfig` return object (after `downstreamBacktests`), add:
 
 - [ ] **Step 4: Update `.env.example`**
 
-Locate the office `.env.example` (`find . -name .env.example -not -path '*/node_modules/*'` in the office repo) and add, next to the `OPERATOR_DOWNSTREAM_BACKTESTS` block:
+The office env example is `apps/server/.env.example` (NOT a repo-root file). Add, next to the `OPERATOR_DOWNSTREAM_BACKTESTS` block:
 
 ```
 # Cycle scorecard consumer (R5d) — posts the Lab cycle scorecard to the operator chat.
@@ -679,28 +776,104 @@ Run: `npm run typecheck -w @trading-office/server` → exit 0.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add apps/server/src/config.ts apps/server/src/config.test.ts .env.example
+git add apps/server/src/config.ts apps/server/src/config.test.ts apps/server/.env.example
 git commit -m "feat(r5d): cycleScorecard config + OPERATOR_CYCLE_SCORECARD / OFFICE_SCORECARD_* env surface"
 ```
 
 ---
 
-### Task 5: Wiring in `index.ts`
+### Task 5: Testable fan-out helper + wiring in `index.ts`
 
 **Files:**
+- Create: `apps/server/src/operator/runCycleFanout.ts`
+- Test: `apps/server/src/operator/runCycleFanout.test.ts`
 - Modify: `apps/server/src/index.ts`
 
 **Interfaces:**
-- Consumes: `createScorecardFollower` (Task 3), `config.cycleScorecard` (Task 4), `buildScorecardPath` (unused here), `wiring.client.getScorecardMarkdown` (Task 2), `wiring.bridge`.
+- Produces: `interface RunCycleConsumer`, `makeRunCycleFanout(consumers): ((taskId, conversationId) => void) | undefined`.
+- Consumes: `createScorecardFollower` (Task 3), `config.cycleScorecard` (Task 4), `wiring.client.getScorecardMarkdown` (Task 2), `wiring.bridge`.
 
-- [ ] **Step 1: Construct the follower and fan out `onRunCycleTask`**
+The fan-out is extracted into a tiny pure helper so the "follower runs even when the downstream watcher is off, and both run when both are on" behavior is unit-tested (index.ts itself is not unit-testable).
 
-In `index.ts`, inside the `if (config.tradingLab.chatToken)` block where `backtestWatcher` and `responderDeps` are built:
+- [ ] **Step 1: Write the failing fan-out test**
 
-1. After `backtestWatcher` is set, construct the follower (gated, independent of downstreamBacktests):
+Create `apps/server/src/operator/runCycleFanout.test.ts`:
 
 ```ts
-    const scorecardFollower = config.cycleScorecard.enabled
+import { describe, it, expect, vi } from 'vitest';
+import { makeRunCycleFanout } from './runCycleFanout';
+
+describe('makeRunCycleFanout', () => {
+  it('returns undefined when there is no consumer', () => {
+    expect(makeRunCycleFanout([undefined, undefined])).toBeUndefined();
+  });
+  it('registers the follower even when the watcher is absent', () => {
+    const follower = { register: vi.fn() };
+    makeRunCycleFanout([undefined, follower])!('t1', 'c1');
+    expect(follower.register).toHaveBeenCalledWith('t1', 'c1');
+  });
+  it('registers with every present consumer', () => {
+    const watcher = { register: vi.fn() };
+    const follower = { register: vi.fn() };
+    makeRunCycleFanout([watcher, follower])!('t1', 'c1');
+    expect(watcher.register).toHaveBeenCalledWith('t1', 'c1');
+    expect(follower.register).toHaveBeenCalledWith('t1', 'c1');
+  });
+});
+```
+
+- [ ] **Step 2: Run to verify failure**
+
+Run: `npm test -w @trading-office/server -- src/operator/runCycleFanout.test.ts`
+Expected: FAIL — module missing.
+
+- [ ] **Step 3: Implement the helper**
+
+Create `apps/server/src/operator/runCycleFanout.ts`:
+
+```ts
+export interface RunCycleConsumer {
+  register(runCycleTaskId: string, conversationId: string): void;
+}
+
+/** Build the onRunCycleTask callback that fans out to every present consumer. Returns undefined
+ *  when none are present (so the responder's optional onRunCycleTask stays undefined). */
+export function makeRunCycleFanout(
+  consumers: Array<RunCycleConsumer | undefined>,
+): ((runCycleTaskId: string, conversationId: string) => void) | undefined {
+  const active = consumers.filter((c): c is RunCycleConsumer => c !== undefined);
+  if (active.length === 0) return undefined;
+  return (runCycleTaskId, conversationId) => {
+    for (const c of active) c.register(runCycleTaskId, conversationId);
+  };
+}
+```
+
+- [ ] **Step 4: Run to verify pass**
+
+Run: `npm test -w @trading-office/server -- src/operator/runCycleFanout.test.ts` → PASS.
+
+- [ ] **Step 5: Wire into `index.ts`**
+
+In `index.ts`, inside the `if (config.tradingLab.chatToken)` block:
+
+1. Add the imports at the top of the file:
+
+```ts
+import { createScorecardFollower, type ScorecardFollower } from './operator/ScorecardFollower';
+import { makeRunCycleFanout } from './operator/runCycleFanout';
+```
+
+2. Declare the follower at the **same scope as `shutdown`** (top level, so `shutdown` can reference it) — do NOT declare it with `const` inside the `if` block:
+
+```ts
+let scorecardFollower: ScorecardFollower | undefined;
+```
+
+3. Inside the `if (config.tradingLab.chatToken)` block, assign it (gated; independent of `downstreamBacktests.enabled`):
+
+```ts
+    scorecardFollower = config.cycleScorecard.enabled
       ? createScorecardFollower({
           bridge: wiring.bridge,
           client: {
@@ -714,52 +887,39 @@ In `index.ts`, inside the `if (config.tradingLab.chatToken)` block where `backte
       : undefined;
 ```
 
-2. Change `responderDeps.onRunCycleTask` to fan out to BOTH consumers (replace the existing `onRunCycleTask` line):
+4. Replace the existing `onRunCycleTask` line in `responderDeps` with the fan-out helper:
 
 ```ts
-      onRunCycleTask: (backtestWatcher || scorecardFollower)
-        ? (taskId: string, cid: string) => { backtestWatcher?.register(taskId, cid); scorecardFollower?.register(taskId, cid); }
-        : undefined,
+      onRunCycleTask: makeRunCycleFanout([backtestWatcher, scorecardFollower]),
 ```
 
-3. Add the import at the top:
-
-```ts
-import { createScorecardFollower } from './operator/ScorecardFollower';
-```
-
-4. In the `shutdown` function, stop the follower alongside the watcher (add near the existing `backtestWatcher?.stop()` if present; if the watcher isn't stopped there today, add both):
+5. In the top-level `shutdown` function, stop the follower (alongside stopping `backtestWatcher` — add both if not already stopped there):
 
 ```ts
   scorecardFollower?.stop();
 ```
 
-> `defaultNewIds()` is the same id factory the watcher wiring uses (`newIds: () => { const { operatorMessageId, replyMessageId } = defaultNewIds()(); return { operatorMessageId, replyMessageId }; }` in the current code) — reuse that exact shape if `defaultNewIds()()` doesn't already return both ids.
+> `defaultNewIds()` is the id factory the watcher wiring already uses (`() => { const { operatorMessageId, replyMessageId } = defaultNewIds()(); return { operatorMessageId, replyMessageId }; }`). Reuse that exact shape if `defaultNewIds()()` does not already return both ids; the follower's `newIds` must return `{ operatorMessageId, replyMessageId }`.
 
-- [ ] **Step 2: Typecheck + full suite (wiring has no isolated unit test; it's covered by typecheck + the existing app/integration tests)**
+- [ ] **Step 6: Typecheck + full suite**
 
-Run: `npm run typecheck -w @trading-office/server` → exit 0.
-Run: `npm test -w @trading-office/server` → all pass (no regressions in app/integration/responder tests).
+Run: `npm run typecheck -w @trading-office/server` → exit 0 (proves the top-level `let` + fan-out types line up).
+Run: `npm test -w @trading-office/server` → all pass (no regressions).
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add apps/server/src/index.ts
-git commit -m "feat(r5d): wire ScorecardFollower into onRunCycleTask fan-out (flag-gated, independent of downstream watcher)"
+git add apps/server/src/operator/runCycleFanout.ts apps/server/src/operator/runCycleFanout.test.ts apps/server/src/index.ts
+git commit -m "feat(r5d): testable onRunCycleTask fan-out + wire ScorecardFollower (flag-gated, independent of downstream watcher)"
 ```
 
 ---
 
-### Task 6: Deploy passthrough (Lab docker compose)
+### (Not an office-SDD task) Deploy passthrough — SEPARATE Lab PR
 
-**Files:**
-- Modify: the Lab-repo Docker Compose file(s) that launch the Office service (in `../lab` — locate with `grep -rl "@trading-office\|office" ../lab/docker* ../lab/**/docker* 2>/dev/null` or inspect the lab docker orchestration dir).
+**This is NOT part of the office subagent-driven run and MUST NOT be committed by an office task.** It is a change in the **lab** repo, whose current checkout is on the R5c branch — committing there from an office task would pollute an unrelated branch. Execute it as its own lab worktree/branch + PR (or, by explicit human decision, an added commit to lab#180), after the office PR.
 
-**Interfaces:** none (deploy config only).
-
-- [ ] **Step 1: Add env passthrough**
-
-In the compose service that runs Office, add the new env vars to its `environment:` block so they reach the container (default them off/empty; the operator sets real values per environment):
+- **File:** `lab/docker-compose.demo.yml` — add the env passthrough to the Office service's `environment:` block. The local/VPS overlays inherit this service environment, so this one file is sufficient.
 
 ```yaml
       OPERATOR_CYCLE_SCORECARD: ${OPERATOR_CYCLE_SCORECARD:-false}
@@ -770,23 +930,11 @@ In the compose service that runs Office, add the new env vars to its `environmen
       OFFICE_SCORECARD_FETCH_INTERVAL_MS: ${OFFICE_SCORECARD_FETCH_INTERVAL_MS:-500}
 ```
 
-> This is a Lab-repo change (deploy config, not Lab source/behavior). It may land as its own tiny commit/PR in `../lab`. Without it the flag exists but cannot be flipped in demo/VPS. If the office service is defined in an office-repo compose instead, apply it there.
-
-- [ ] **Step 2: Verify the compose parses**
-
-Run (in the lab repo, adjusting the file path): `docker compose -f <compose-file> config >/dev/null && echo OK`
-Expected: `OK` (no YAML/interpolation error).
-
-- [ ] **Step 3: Commit** (in the lab repo)
-
-```bash
-git -C ../lab add <compose-file>
-git -C ../lab commit -m "chore(docker): pass OPERATOR_CYCLE_SCORECARD / OFFICE_SCORECARD_* through to office (R5d)"
-```
+- **Steps (in a fresh lab worktree/branch off lab `main`, not the R5c branch):** add the block → `docker compose -f docker-compose.demo.yml config >/dev/null && echo OK` → commit `chore(docker): pass OPERATOR_CYCLE_SCORECARD / OFFICE_SCORECARD_* through to office (R5d)` → open a separate lab PR. Without this, the flag exists but cannot be flipped in demo/VPS.
 
 ---
 
-### Task 7: Full-suite regression + typecheck
+### Task 6: Full-suite regression + typecheck
 
 **Files:** none (verification only)
 
@@ -808,13 +956,13 @@ Expected: exit 0.
 
 **Spec coverage:**
 - Construct-from-correlationId + branded path — Task 1. ✅
-- `text/markdown` fetch with ok/not_found/transient/permanent — Task 2. ✅
-- ScorecardFollower: bootstrap (anchorTaskId), recovery probe, event, single-flight, coalesced wake-up, TTL via expired, transient→idle, permanent→unavailable-once, bootstrap-exhaustion terminal, `complete()` helper (delete + bounded tombstones), stop-safety — Task 3. ✅
-- Independent of downstream watcher; flag off by default; env surface + `.env.example` + compose passthrough — Tasks 4, 5, 6. ✅
-- Tests: cycle with zero backtests (chained/event-only path), duplicate register/replay, stop-safety, config parsing — Task 3, 4. ✅
+- `text/markdown` fetch with ok/not_found/transient/permanent (Bearer + normalized MIME asserted) — Task 2. ✅
+- ScorecardFollower: bootstrap (anchorTaskId), recovery probe, event, single-flight, coalesced wake-up, TTL via expired, transient→idle, permanent→unavailable-once, bootstrap-exhaustion terminal, `complete()` helper (terminal-state-first then best-effort publish; delete from maps + bounded tombstones), `pendingByTask`/`activeByTask`/`doneByTask` register guard, stop-safety — Task 3. ✅
+- Independent of downstream watcher (unit-tested fan-out helper); flag off by default; env surface + `apps/server/.env.example` — Tasks 4, 5. Compose passthrough → separate Lab PR (not an office task). ✅
+- Tests: cycle with zero backtests (event-only path), duplicate register/replay, one-bootstrap-per-anchor, activeByTask-blocks-repeat, subscriber-exception terminal guarantee, TTL-during-fetch, coalesced wake-up, stop-during-bootstrap, stop-during-fetch, config parsing, fan-out — Tasks 3, 4, 5. ✅
 - DTO `scorecardUrl` declared, not consumed — Task 1. ✅
 - Honest process-local at-most-once / local canonical-path regression naming — Task 1 test comment + Global Constraints. ✅
 
-**Placeholder scan:** no TBD/TODO. Two steps say "locate the file" (`.env.example`, the lab compose) — deliberate (paths vary by repo layout) and each gives the exact `find`/`grep` to run and the exact content to add.
+**Placeholder scan:** no TBD/TODO. Test steps use deferred promises + a microtask `flush()` (never `runAllTimersAsync`, which would fire the TTL) so timing is deterministic. The `.env.example` path and the lab compose file are named exactly (`apps/server/.env.example`, `lab/docker-compose.demo.yml`).
 
-**Type consistency:** `ValidatedScorecardPath`, `ScorecardFetchResult`, `ScorecardFollowGuards`, `createScorecardFollower`, `buildScorecardPath` used identically across tasks. `config.cycleScorecard.guards` is a `ScorecardFollowGuards`. `onRunCycleTask(taskId, cid)` — `cid` is the conversationId (matches the responder callsite and the follower's `register(anchorTaskId, conversationId)`).
+**Type consistency:** `ValidatedScorecardPath`, `ScorecardFetchResult`, `ScorecardFollowGuards`, `ScorecardFollowerDeps`, `createScorecardFollower`, `buildScorecardPath`, `makeRunCycleFanout` used identically across tasks. `config.cycleScorecard.guards` is a `ScorecardFollowGuards`. `onRunCycleTask(taskId, cid)` — `cid` is the conversationId (matches the responder callsite and the follower's `register(anchorTaskId, conversationId)`). `scorecardFollower` is declared `let ... | undefined` at `shutdown` scope so wiring compiles.
