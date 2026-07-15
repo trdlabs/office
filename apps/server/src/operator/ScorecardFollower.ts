@@ -75,7 +75,7 @@ export function createScorecardFollower(deps: ScorecardFollowerDeps): ScorecardF
       operatorMessageId,
       conversationId,
       reply: { replyMessageId, operatorMessageId, conversationId, text, ts },
-    } as OfficeEvent);
+    });
   }
 
   // Single terminal helper. Records the terminal state FIRST (atomically, before any publish can
@@ -150,10 +150,6 @@ export function createScorecardFollower(deps: ScorecardFollowerDeps): ScorecardF
       if (i < guards.fetchRetries) await sleep(guards.fetchIntervalMs);
     }
     if (stopped) return;
-    // Defensive: nothing in this module mutates reg.state to 'done' while a fetch is in flight
-    // (TS narrows reg.state to the 'fetching' literal here since no visible assignment resets it,
-    // so the cast keeps this guard future-proof without fighting the narrowing).
-    if ((reg.state as Reg['state']) === 'done') return;
 
     if (result.kind === 'ok') { complete(reg, result.markdown); return; }
     if (result.kind === 'permanent') { complete(reg, UNAVAILABLE_TEXT); return; }

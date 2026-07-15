@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createScorecardFollower, type ScorecardFollowerDeps } from './ScorecardFollower';
 import type { ScorecardFetchResult } from '../connector/tradinglab/TradingLabHttpClient';
 import type { LabAgentEvent } from '../connector/tradinglab/labDtos';
