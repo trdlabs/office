@@ -75,6 +75,14 @@ describe('buildScorecardPath', () => {
   it('percent-encodes the correlationId', () => {
     expect(buildScorecardPath('a/b c')).toBe('/v1/cycles/a%2Fb%20c/scorecard?format=markdown');
   });
+  it('a "." / ".." correlationId cannot collapse the path via URL normalization (no traversal)', () => {
+    // encodeURIComponent leaves dots literal, so a bare `.`/`..` segment would let new URL()/the
+    // server normalize `/v1/cycles/../scorecard` down to `/v1/scorecard`. Percent-encoding the dots
+    // in exactly that case blocks it. (Real Lab correlationIds are UUIDs — this is defense in depth.)
+    expect(buildScorecardPath('..')).toBe('/v1/cycles/%2E%2E/scorecard?format=markdown');
+    expect(buildScorecardPath('.')).toBe('/v1/cycles/%2E/scorecard?format=markdown');
+    expect(new URL(buildScorecardPath('..'), 'http://lab').pathname).toBe('/v1/cycles/%2E%2E/scorecard');
+  });
 });
 ```
 
@@ -94,7 +102,12 @@ Create `apps/server/src/operator/scorecardPath.ts`:
 export type ValidatedScorecardPath = string & { readonly __scorecardPath: unique symbol };
 
 export function buildScorecardPath(correlationId: string): ValidatedScorecardPath {
-  return `/v1/cycles/${encodeURIComponent(correlationId)}/scorecard?format=markdown` as ValidatedScorecardPath;
+  let seg = encodeURIComponent(correlationId);
+  // encodeURIComponent leaves dots literal, so a bare `.`/`..` segment could be normalized into a
+  // path-traversal by new URL()/the server. Percent-encode the dots in exactly that case. Real Lab
+  // correlationIds are UUID-shaped (no dot-only segment), so parity with Lab's path is unaffected.
+  if (seg === '.' || seg === '..') seg = seg.replace(/\./g, '%2E');
+  return `/v1/cycles/${seg}/scorecard?format=markdown` as ValidatedScorecardPath;
 }
 ```
 
