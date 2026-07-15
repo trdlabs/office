@@ -1,3 +1,5 @@
+import type { ScorecardFollowGuards } from './operator/ScorecardFollower';
+
 export type OfficeConnectorMode = 'fixture' | 'trading-lab';
 
 export interface TradingLabConfig {
@@ -62,6 +64,7 @@ export interface OfficeServerConfig {
   stream: StreamConfig;
   platform: PlatformConfig;
   downstreamBacktests: DownstreamBacktestsConfig;
+  cycleScorecard: { enabled: boolean; guards: ScorecardFollowGuards };
   auth: AuthConfig;
 }
 
@@ -145,6 +148,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): OfficeServerCo
       bootstrapIntervalMs: num(env, 'OFFICE_CHAT_BOOTSTRAP_INTERVAL_MS', 750),
       summaryRetries: num(env, 'OFFICE_BACKTEST_SUMMARY_RETRIES', 5),
       summaryIntervalMs: num(env, 'OFFICE_BACKTEST_SUMMARY_INTERVAL_MS', 500),
+    },
+    cycleScorecard: {
+      enabled: env.OPERATOR_CYCLE_SCORECARD === 'true' && connectorMode === 'trading-lab',
+      guards: {
+        ttlMs: num(env, 'OFFICE_SCORECARD_TTL_MS', 3_600_000),
+        bootstrapRetries: num(env, 'OFFICE_SCORECARD_BOOTSTRAP_RETRIES', 8),
+        bootstrapIntervalMs: num(env, 'OFFICE_SCORECARD_BOOTSTRAP_INTERVAL_MS', 750),
+        fetchRetries: num(env, 'OFFICE_SCORECARD_FETCH_RETRIES', 3),
+        fetchIntervalMs: num(env, 'OFFICE_SCORECARD_FETCH_INTERVAL_MS', 500),
+      },
     },
     auth,
   };
