@@ -4,6 +4,15 @@ import type {
 } from './labDtos';
 import type { LabReadReasonCode } from './labReadSource';
 import type { AgentTraces } from '@trading-office/office-gateway';
+import type { ValidatedScorecardPath } from '../../operator/scorecardPath';
+
+/** Result of a scorecard markdown fetch. Never throws — classification rides on the result:
+ *  not_found (wait for the event), transient (bounded retry), permanent (non-retriable). */
+export type ScorecardFetchResult =
+  | { kind: 'ok'; markdown: string }
+  | { kind: 'not_found' }
+  | { kind: 'transient' }
+  | { kind: 'permanent' };
 
 export interface OfficeUpstreamError extends Error {
   office: {
@@ -74,6 +83,33 @@ export class TradingLabHttpClient {
       return await this.getJson<LabCompletionSummary>(`/v1/tasks/${encodeURIComponent(taskId)}/completion-summary`, true);
     } catch {
       return null; // OfficeUpstreamError (404/bad_request/unavailable) → degrade to the prior reply
+    }
+  }
+
+  /** Fetch the cycle scorecard as Markdown. Never throws — classification rides on the result:
+   *  not_found (wait for the event), transient (bounded retry), permanent (non-retriable). */
+  async getScorecardMarkdown(path: ValidatedScorecardPath): Promise<ScorecardFetchResult> {
+    const headers: Record<string, string> = { accept: 'text/markdown', Authorization: `Bearer ${this.deps.readToken}` };
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), this.deps.requestTimeoutMs);
+    let res: Response;
+    try {
+      res = await this.fetchImpl(`${this.deps.readUrl}${path}`, { headers, signal: ctrl.signal });
+    } catch {
+      return { kind: 'transient' }; // network failure or client timeout (AbortError)
+    } finally {
+      clearTimeout(timer);
+    }
+    if (res.status === 404) return { kind: 'not_found' };
+    if (res.status === 401 || res.status === 403) return { kind: 'permanent' };
+    if (res.status >= 500) return { kind: 'transient' };
+    if (res.status >= 400) return { kind: 'permanent' };
+    const mime = ((res.headers.get('content-type') ?? '').split(';')[0] ?? '').trim().toLowerCase();
+    if (mime !== 'text/markdown') return { kind: 'permanent' }; // misrouted/HTML must not be published as a scorecard
+    try {
+      return { kind: 'ok', markdown: await res.text() };
+    } catch {
+      return { kind: 'transient' };
     }
   }
 
