@@ -105,3 +105,11 @@ risk-profile JSON» и «скопировать команду `repromote --risk
   Pixi-канваса (конфигуратор — форма, не спрайты).
 - Соблюдать `AGENTS.md`: русская документация/вопросы, границы workspaces, `verify:assets` зелёный,
   authZ/аудит/подтверждение для действий.
+
+---
+
+## Кросс-репо инициативы
+
+Канонический статус — в control-center [реестре инициатив](../control-center/docs/delivery/cross-repo-initiatives.md); локально не дублируем (правило реестра).
+
+- [security-edge-hardening](../control-center/docs/delivery/initiatives/security-edge-hardening.md) — `proposed`. Офисная часть: office-server стартует БЕЗ auth по умолчанию (guard монтируется только при заданном `OFFICE_OPERATOR_PASSWORD` — `apps/server/src/config.ts:96`, `app.ts:58`), а на VPS через lab-compose публикуется на `0.0.0.0:8787` с серверными platform-read/lab-chat токенами → любой, кто дотянулся до порта, инициирует действия без операторских кредов; `/operator/confirm` минует human-in-the-loop и не имеет `assertNoExecutionAuthority` (`app.ts:95`). Сделать fail-closed в connected-режиме + authority-guard на confirm + дефолт `BIND_ADDR=127.0.0.1`. Аудит: control-center [`docs/analysis/08-security-boundary-audit.md`](../control-center/docs/analysis/08-security-boundary-audit.md).
