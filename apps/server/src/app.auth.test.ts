@@ -85,4 +85,36 @@ describe('operator auth — enabled (password configured)', () => {
     const { app } = appWithAuth();
     expect((await login(app, PW)).status).toBe(200);
   });
+
+  // SEC-O4: /operator/confirm resolves a pending human-in-the-loop interaction, so it must sit
+  // behind the same chokepoint as every other route — not on a quieter path of its own. The
+  // authority decision over WHAT is being confirmed belongs to trading-lab, which owns the
+  // ActionProposal; authentication here is the office's own first and only chokepoint.
+  describe('/operator/confirm', () => {
+    const confirm = (app: ReturnType<typeof createFixtureOfficeApp>['app'], headers: Record<string, string> = {}) =>
+      app.request(OFFICE_API.operatorConfirm, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...headers },
+        body: JSON.stringify({ pendingInteractionId: 'p1', sessionId: 's1', decision: 'confirm' }),
+      });
+
+    it('rejects an unauthenticated confirm with 401', async () => {
+      const { app } = appWithAuth();
+      expect((await confirm(app)).status).toBe(401);
+    });
+
+    it('rejects a confirm carrying an invalid token with 401', async () => {
+      const { app } = appWithAuth();
+      expect((await confirm(app, { authorization: 'Bearer not-a-real-token' })).status).toBe(401);
+    });
+
+    it('lets a valid credential through to the route (503 = past auth, no confirm responder wired)', async () => {
+      const { app } = appWithAuth();
+      const { token } = (await (await login(app, PW)).json()) as { token: string };
+      const res = await confirm(app, { authorization: `Bearer ${token}` });
+      expect(res.status).not.toBe(401);
+      expect(res.status).toBe(503);
+      expect(await res.json()).toMatchObject({ error: { code: 'not_configured' } });
+    });
+  });
 });

@@ -3,7 +3,7 @@ import { createTradingLabWiring } from '../createTradingLabWiring';
 import { loadConfig } from '../../config';
 import type { PlatformMonitoringConnector } from './PlatformMonitoringConnector';
 
-const cfg = () => loadConfig({ OFFICE_CONNECTOR_MODE: 'trading-lab', TRADING_LAB_READ_URL: 'http://lab', TRADING_LAB_READ_TOKEN: 't' });
+const cfg = () => loadConfig({ OFFICE_CONNECTOR_MODE: 'trading-lab', TRADING_LAB_READ_URL: 'http://lab', TRADING_LAB_READ_TOKEN: 't', OFFICE_OPERATOR_PASSWORD: 'op-pass' });
 const labFetch = (async () => new Response(JSON.stringify({ status: 'ok' }), { status: 200 })) as unknown as typeof fetch;
 
 const fakePlatform = (): PlatformMonitoringConnector => ({

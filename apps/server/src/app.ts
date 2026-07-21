@@ -9,6 +9,7 @@ import { loadConfig } from './config';
 import type { OfficeReadConnector } from './connector/OfficeReadConnector';
 import { FixtureOfficeReadConnector } from './connector/FixtureOfficeReadConnector';
 import { OfficeEventBus } from './events/OfficeEventBus';
+import { ExecutionAuthorityError } from './guard/noExecutionAuthority';
 import { handleOperatorMessage } from './operator/responder';
 import type { OperatorResponder, OperatorConfirmResponder } from './operator/TradingLabOperatorResponder';
 
@@ -127,6 +128,16 @@ export function createOfficeApp(deps: OfficeAppDeps) {
   // TYPED status, never a generic 500. Body is safe + static: no token, URL, or
   // stack trace, just the stable reason code.
   app.onError((err, c) => {
+    // The office holds NO execution authority: `assertNoExecutionAuthority` refuses any operator
+    // message that addresses something other than the orchestrator. That is an authorization
+    // outcome, not a server fault, so it must surface as a typed 403 — a generic 500 would read
+    // as "office broke" and hide a refused authority escalation from operators and logs.
+    if (err instanceof ExecutionAuthorityError) {
+      return c.json(
+        { error: { code: 'execution_authority_denied', message: 'office holds no execution authority' } },
+        403,
+      );
+    }
     const office = (err as { office?: { code?: string; reason?: string } }).office;
     if (!office) return c.json({ error: { code: 'internal_error', message: 'internal error' } }, 500);
     const reason = office.reason ?? office.code ?? 'upstream_error';
