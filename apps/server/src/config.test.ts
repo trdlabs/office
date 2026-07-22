@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { loadConfig } from './config';
 
-const base = { TRADING_LAB_READ_URL: 'http://lab:3100', TRADING_LAB_READ_TOKEN: 't' };
+// Connected mode is fail-closed on the operator password, so every trading-lab fixture below
+// must carry one — an omission is a startup refusal, not an "auth off" config.
+const base = { TRADING_LAB_READ_URL: 'http://lab:3100', TRADING_LAB_READ_TOKEN: 't', OFFICE_OPERATOR_PASSWORD: 'op-pass' };
 
 describe('loadConfig', () => {
   it('defaults to fixture mode with no lab env', () => {
@@ -89,7 +91,7 @@ describe('loadConfig', () => {
   });
   it('OPERATOR_CYCLE_SCORECARD only enables in trading-lab mode', () => {
     expect(loadConfig({ OPERATOR_CYCLE_SCORECARD: 'true' }).cycleScorecard.enabled).toBe(false); // fixture mode
-    const c = loadConfig({ OPERATOR_CYCLE_SCORECARD: 'true', OFFICE_CONNECTOR_MODE: 'trading-lab', TRADING_LAB_READ_URL: 'http://l', TRADING_LAB_READ_TOKEN: 't' });
+    const c = loadConfig({ OPERATOR_CYCLE_SCORECARD: 'true', OFFICE_CONNECTOR_MODE: 'trading-lab', ...base });
     expect(c.cycleScorecard.enabled).toBe(true);
   });
   it('scorecard guards read from env', () => {
@@ -121,6 +123,48 @@ describe('loadConfig', () => {
       });
       expect(c.auth.secret).toBe('hmac-key');
       expect(c.auth.ttlMs).toBe(1000);
+    });
+  });
+
+  // SEC-O1: the fixture path may stay open, but a connected office fronts real lab/platform
+  // service tokens — there an unauthenticated port is a credential-bearing bypass. loadConfig()
+  // runs before serve() in index.ts, so a throw here IS the non-zero exit the gate asks for.
+  describe('fail-closed: connected mode requires an operator password', () => {
+    const connected = { OFFICE_CONNECTOR_MODE: 'trading-lab', TRADING_LAB_READ_URL: 'http://lab:3100', TRADING_LAB_READ_TOKEN: 't' };
+
+    it('refuses to build a trading-lab config with no operator password', () => {
+      expect(() => loadConfig(connected)).toThrow(/OFFICE_OPERATOR_PASSWORD/);
+    });
+
+    it('refuses an explicitly empty operator password', () => {
+      expect(() => loadConfig({ ...connected, OFFICE_OPERATOR_PASSWORD: '' })).toThrow(/OFFICE_OPERATOR_PASSWORD/);
+    });
+
+    it('refuses a whitespace-only password (an unusable guard is not a guard)', () => {
+      expect(() => loadConfig({ ...connected, OFFICE_OPERATOR_PASSWORD: '   ' })).toThrow(/OFFICE_OPERATOR_PASSWORD/);
+    });
+
+    it('refuses platform-enabled mode with no operator password', () => {
+      expect(() =>
+        loadConfig({
+          ...connected,
+          OFFICE_PLATFORM_ENABLED: 'true',
+          TRADING_PLATFORM_READ_URL: 'http://platform:8839',
+          TRADING_PLATFORM_READ_TOKEN: 'p',
+        }),
+      ).toThrow(/OFFICE_OPERATOR_PASSWORD/);
+    });
+
+    it('starts once a password is supplied, with auth enforced', () => {
+      const c = loadConfig({ ...connected, OFFICE_OPERATOR_PASSWORD: 'op-pass' });
+      expect(c.connectorMode).toBe('trading-lab');
+      expect(c.auth.enabled).toBe(true);
+    });
+
+    it('leaves fixture mode startable without a password (demo path is unchanged)', () => {
+      const c = loadConfig({});
+      expect(c.connectorMode).toBe('fixture');
+      expect(c.auth.enabled).toBe(false);
     });
   });
 });

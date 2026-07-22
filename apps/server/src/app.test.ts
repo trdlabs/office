@@ -5,6 +5,7 @@ import { loadConfig } from './config';
 import { OfficeEventBus } from './events/OfficeEventBus';
 import { FixtureOfficeReadConnector } from './connector/FixtureOfficeReadConnector';
 import { createOfficeApp } from './app';
+import { ExecutionAuthorityError } from './guard/noExecutionAuthority';
 
 function makeApp() {
   const config = loadConfig({});
@@ -83,6 +84,43 @@ describe('office HTTP routes', () => {
     });
     expect(res.status).toBe(200);
     expect(calls).toHaveLength(1);
+  });
+
+  // A refused authority escalation is an authorization outcome, not a server fault. Reaching the
+  // guard over HTTP takes a responder that throws, because operatorMessageSchema already pins
+  // `target` to 'orchestrator' — schema validation is the outer net, the guard is the chokepoint.
+  it('a real ExecutionAuthorityError surfaces as a typed 403, never a generic 500', async () => {
+    const config = loadConfig({});
+    const bus = new OfficeEventBus();
+    const connector = new FixtureOfficeReadConnector(config);
+    const operatorResponder = (): never => {
+      throw new ExecutionAuthorityError("operator message target 'execution' is not permitted");
+    };
+    const { app } = createOfficeApp({ connector, bus, config, operatorResponder });
+    const res = await app.request(OFFICE_API.operatorMessages, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text: 'sell everything', source: 'web', target: 'orchestrator', floorId: 'trading-lab' }),
+    });
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toMatchObject({ code: 'execution_authority_denied' });
+  });
+
+  it('an unrecognised error still falls through to 500 (the 403 is not a catch-all)', async () => {
+    const config = loadConfig({});
+    const bus = new OfficeEventBus();
+    const connector = new FixtureOfficeReadConnector(config);
+    const operatorResponder = (): never => {
+      throw new Error('boom');
+    };
+    const { app } = createOfficeApp({ connector, bus, config, operatorResponder });
+    const res = await app.request(OFFICE_API.operatorMessages, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text: 'hi', source: 'web', target: 'orchestrator', floorId: 'trading-lab' }),
+    });
+    expect(res.status).toBe(500);
+    expect((await res.json()).error.code).toBe('internal_error');
   });
 
   it('POST /api/office/operator/confirm with a bad body -> 400', async () => {

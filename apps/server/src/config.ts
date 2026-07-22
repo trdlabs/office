@@ -113,6 +113,20 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): OfficeServerCo
     readToken: str(env, 'TRADING_PLATFORM_READ_TOKEN', ''),
     requestTimeoutMs: num(env, 'TRADING_PLATFORM_REQUEST_TIMEOUT_MS', 10000),
   };
+  // Fail-closed (SEC-O1). `auth.enabled` above keys off a non-empty password, which makes
+  // operator auth OPTIONAL — acceptable for the fixture/demo path, never for a CONNECTED
+  // office: there the server holds real lab and platform service tokens and proxies them on
+  // every call, so an unauthenticated port is a credential-bearing bypass. Refuse to start
+  // rather than serve an open API. Whitespace is rejected too: it would mount a guard whose
+  // password cannot be typed, which reads as "auth on" while being unusable.
+  // platformEnabled already implies trading-lab mode; both are named so the invariant survives
+  // if that coupling is ever relaxed.
+  if ((connectorMode === 'trading-lab' || platformEnabled) && operatorPassword.trim() === '') {
+    throw new Error(
+      'connected mode (OFFICE_CONNECTOR_MODE=trading-lab / OFFICE_PLATFORM_ENABLED=true) requires a non-empty OFFICE_OPERATOR_PASSWORD — operator auth is mandatory once the office fronts real credentials',
+    );
+  }
+
   if (platformEnabled && (!env.TRADING_PLATFORM_READ_URL || !env.TRADING_PLATFORM_READ_TOKEN)) {
     throw new Error(
       'OFFICE_PLATFORM_ENABLED=true (trading-lab mode) requires TRADING_PLATFORM_READ_URL and TRADING_PLATFORM_READ_TOKEN',

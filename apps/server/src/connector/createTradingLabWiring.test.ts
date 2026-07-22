@@ -8,7 +8,7 @@ const json = (b: unknown) => new Response(JSON.stringify(b), { status: 200 });
 
 describe('createTradingLabWiring', () => {
   it('turns a trading-lab stream event into an office WS event', async () => {
-    const config = loadConfig({ OFFICE_CONNECTOR_MODE: 'trading-lab', TRADING_LAB_READ_URL: 'http://lab:3100', TRADING_LAB_READ_TOKEN: 't' });
+    const config = loadConfig({ OFFICE_CONNECTOR_MODE: 'trading-lab', TRADING_LAB_READ_URL: 'http://lab:3100', TRADING_LAB_READ_TOKEN: 't', OFFICE_OPERATOR_PASSWORD: 'op-pass' });
     const fetchImpl = (async () => json({ status: 'ok', checks: { db: true } })) as unknown as typeof fetch;
     const connect: SseConnect = async ({ signal }): Promise<SseConnection> => ({
       frames: (async function* () {
