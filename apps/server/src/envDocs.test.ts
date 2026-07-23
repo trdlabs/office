@@ -41,7 +41,7 @@ describe('генерация ENV.md и .env*.example', () => {
 
   it('web-example содержит только VITE_* переменные', () => {
     const web = files.find((f) => f.path === 'apps/web/.env.example')!.content;
-    const names = [...web.matchAll(/^#? ?([A-Z][A-Z0-9_]*)=/gm)].map((m) => m[1]);
+    const names = [...web.matchAll(/^#? ?([A-Z][A-Z0-9_]*)=/gm)].map((m) => m[1] ?? '');
     expect(names.length).toBeGreaterThan(0);
     for (const n of names) expect(n.startsWith('VITE_'), n).toBe(true);
   });

@@ -168,8 +168,8 @@ describe('envSchemaDocument — экспорт env-schema.1', () => {
   it('флагов E4b-паттерна в офисе нет: все переменные flag=false и без flag_states', () => {
     for (const v of doc.variables) {
       expect(v.flag, v.name).toBe(false);
-      expect((v as Record<string, unknown>).flag_states).toBeUndefined();
-      expect((v as Record<string, unknown>).default_state).toBeUndefined();
+      expect((v as unknown as Record<string, unknown>).flag_states).toBeUndefined();
+      expect((v as unknown as Record<string, unknown>).default_state).toBeUndefined();
     }
   });
 
@@ -191,7 +191,7 @@ describe('envSchemaDocument — экспорт env-schema.1', () => {
         case 'int': return '7';
         case 'duration_ms': return '7';
         case 'bool': return 'true';
-        case 'enum': return spec.enum_values![0];
+        case 'enum': return spec.enum_values![0]!;
         case 'url': return 'http://localhost:1';
         default: return 'x';
       }
