@@ -19,22 +19,22 @@ npm run dev:server   # tsx watch → http://localhost:8787  (режим fixture)
 
 ## Конфигурация
 
-Читается из `process.env` при старте — **авто-загрузки `.env` нет**, поэтому
-переменные нужно экспортировать (или передать через ваш process-manager). Полный
-список — в `.env.example`.
+Все переменные окружения объявлены в типизированной env-схеме
+`src/env.ts` (единственная точка чтения `process.env`; контракт
+`env-schema.1` из control-center). Сервер валидирует окружение на старте
+**fail-fast** и перечисляет все невалидные переменные разом. Локальный
+`apps/server/.env` подхватывается автоматически (`process.loadEnvFile`);
+ambient env всегда важнее файла.
 
-| Переменная | По умолчанию | Назначение |
-| --- | --- | --- |
-| `OFFICE_SERVER_PORT` | `8787` | порт HTTP/WS |
-| `OFFICE_CORS_ORIGIN` | `http://localhost:5174` | разрешённый origin веба |
-| `OFFICE_CONNECTOR_MODE` | `fixture` | `fixture` \| `trading-lab` |
-| `TRADING_LAB_READ_URL` · `TRADING_LAB_READ_TOKEN` | — | read API trading-lab (**обязательно** в режиме `trading-lab`) |
-| `TRADING_LAB_CHAT_URL` · `TRADING_LAB_CHAT_TOKEN` | — | прокси оператор-чата (опционально) |
-| `OFFICE_PLATFORM_ENABLED` | `false` | мониторинг платформы (только в режиме `trading-lab`) |
-| `TRADING_PLATFORM_READ_URL` · `TRADING_PLATFORM_READ_TOKEN` | — | ops read API trading-platform (**обязательно** при включённом мониторинге) |
+Полный справочник переменных — в корневом [`ENV.md`](../../ENV.md) и в
+`.env.example` (оба генерируются: `npm run env:docs`). Машинный экспорт схемы:
+`npm run -s env:schema` (JSON в stdout).
 
-Read-токены остаются на сервере и никогда не попадают ни в ответ, ни в состояние
-источника, ни в лог.
+В режиме `trading-lab` обязательны `TRADING_LAB_READ_URL` + `TRADING_LAB_READ_TOKEN`
+и непустой `OFFICE_OPERATOR_PASSWORD` (fail-closed, SEC-O1); при
+`OFFICE_PLATFORM_ENABLED=true` — ещё `TRADING_PLATFORM_READ_URL` +
+`TRADING_PLATFORM_READ_TOKEN`. Read-токены остаются на сервере и никогда не
+попадают ни в ответ, ни в состояние источника, ни в лог.
 
 ## API
 
