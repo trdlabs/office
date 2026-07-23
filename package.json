@@ -19,6 +19,8 @@
     "dev:web:connected": "npm run dev:web:connected -w @trading-office/web",
     "dev:connected": "concurrently -k -n server,web \"npm:dev:server\" \"npm:dev:web:connected\"",
     "generate": "npm run generate -w @trading-office/trading-lab-floor",
+    "env:schema": "npm run -s env:schema -w @trading-office/server",
+    "env:docs": "npm run -s env:docs -w @trading-office/server",
     "verify:assets": "node tools/sync-floor-public.mjs apps/web/public --check && node tools/sync-floor-public.mjs examples/trading-lab-research-floor/public --check"
   },
   "devDependencies": {

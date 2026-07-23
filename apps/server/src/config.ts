@@ -1,4 +1,5 @@
 import type { ScorecardFollowGuards } from './operator/ScorecardFollower';
+import { ambientEnv, parseOfficeEnv } from './env';
 
 export type OfficeConnectorMode = 'fixture' | 'trading-lab';
 
@@ -68,50 +69,44 @@ export interface OfficeServerConfig {
   auth: AuthConfig;
 }
 
-const num = (env: NodeJS.ProcessEnv, key: string, def: number): number => {
-  const raw = env[key];
-  if (raw === undefined || raw === '') return def;
-  const n = Number(raw);
-  return Number.isFinite(n) ? n : def;
-};
-
-const str = (env: NodeJS.ProcessEnv, key: string, def: string): string => {
-  const raw = env[key];
-  return raw === undefined || raw === '' ? def : raw;
-};
-
-export function loadConfig(env: NodeJS.ProcessEnv = process.env): OfficeServerConfig {
-  const connectorMode: OfficeConnectorMode =
-    env.OFFICE_CONNECTOR_MODE === 'trading-lab' ? 'trading-lab' : 'fixture';
+// Всё чтение окружения идёт через типизированную env-схему (src/env.ts) —
+// единственную точку чтения process.env (env-catalog item 5). parseOfficeEnv
+// валидирует env fail-fast (все ошибки разом); здесь остаются только
+// кросс-переменные инварианты (fail-closed гейты) и сборка структуры конфига.
+export function loadConfig(env: NodeJS.ProcessEnv = ambientEnv()): OfficeServerConfig {
+  const e = parseOfficeEnv(env);
+  const connectorMode: OfficeConnectorMode = e.OFFICE_CONNECTOR_MODE;
 
   const tradingLab: TradingLabConfig = {
-    readUrl: str(env, 'TRADING_LAB_READ_URL', 'http://localhost:3100'),
-    readToken: str(env, 'TRADING_LAB_READ_TOKEN', ''),
-    chatUrl: str(env, 'TRADING_LAB_CHAT_URL', 'http://localhost:3000'),
-    chatToken: str(env, 'TRADING_LAB_CHAT_TOKEN', ''),
-    requestTimeoutMs: num(env, 'TRADING_LAB_REQUEST_TIMEOUT_MS', 10000),
+    readUrl: e.TRADING_LAB_READ_URL,
+    readToken: e.TRADING_LAB_READ_TOKEN ?? '',
+    chatUrl: e.TRADING_LAB_CHAT_URL,
+    chatToken: e.TRADING_LAB_CHAT_TOKEN ?? '',
+    requestTimeoutMs: e.TRADING_LAB_REQUEST_TIMEOUT_MS,
   };
 
+  // Инвариант смотрит на «сырое» окружение сознательно: в режиме trading-lab
+  // URL и токен должны быть заданы ЯВНО — дефолт схемы не считается.
   if (connectorMode === 'trading-lab' && (!env.TRADING_LAB_READ_URL || !env.TRADING_LAB_READ_TOKEN)) {
     throw new Error(
       'OFFICE_CONNECTOR_MODE=trading-lab requires TRADING_LAB_READ_URL and TRADING_LAB_READ_TOKEN',
     );
   }
 
-  const operatorPassword = str(env, 'OFFICE_OPERATOR_PASSWORD', '');
+  const operatorPassword = e.OFFICE_OPERATOR_PASSWORD ?? '';
   const auth: AuthConfig = {
     enabled: operatorPassword !== '',
     password: operatorPassword,
-    secret: str(env, 'OFFICE_AUTH_SECRET', operatorPassword),
-    ttlMs: num(env, 'OFFICE_AUTH_TTL_MS', 12 * 60 * 60 * 1000), // 12h
+    secret: e.OFFICE_AUTH_SECRET ?? operatorPassword,
+    ttlMs: e.OFFICE_AUTH_TTL_MS, // default 12h
   };
 
-  const platformEnabled = env.OFFICE_PLATFORM_ENABLED === 'true' && connectorMode === 'trading-lab';
+  const platformEnabled = e.OFFICE_PLATFORM_ENABLED && connectorMode === 'trading-lab';
   const platform: PlatformConfig = {
     enabled: platformEnabled,
-    readUrl: str(env, 'TRADING_PLATFORM_READ_URL', 'http://localhost:8839'),
-    readToken: str(env, 'TRADING_PLATFORM_READ_TOKEN', ''),
-    requestTimeoutMs: num(env, 'TRADING_PLATFORM_REQUEST_TIMEOUT_MS', 10000),
+    readUrl: e.TRADING_PLATFORM_READ_URL,
+    readToken: e.TRADING_PLATFORM_READ_TOKEN ?? '',
+    requestTimeoutMs: e.TRADING_PLATFORM_REQUEST_TIMEOUT_MS,
   };
   // Fail-closed (SEC-O1). `auth.enabled` above keys off a non-empty password, which makes
   // operator auth OPTIONAL — acceptable for the fixture/demo path, never for a CONNECTED
@@ -134,43 +129,43 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): OfficeServerCo
   }
 
   return {
-    port: num(env, 'OFFICE_SERVER_PORT', 8787),
-    corsOrigin: str(env, 'OFFICE_CORS_ORIGIN', 'http://localhost:5174'),
-    eventTickMs: num(env, 'OFFICE_EVENT_TICK_MS', 2600),
-    heartbeatMs: num(env, 'OFFICE_HEARTBEAT_MS', 15000),
-    fixtureLatencyMs: num(env, 'OFFICE_FIXTURE_LATENCY_MS', 0),
+    port: e.OFFICE_SERVER_PORT,
+    corsOrigin: e.OFFICE_CORS_ORIGIN,
+    eventTickMs: e.OFFICE_EVENT_TICK_MS,
+    heartbeatMs: e.OFFICE_HEARTBEAT_MS,
+    fixtureLatencyMs: e.OFFICE_FIXTURE_LATENCY_MS,
     connectorMode,
     tradingLab,
     chatFollow: {
-      maxMs: num(env, 'OFFICE_CHAT_FOLLOW_MAX_MS', 300000),
-      idleMs: num(env, 'OFFICE_CHAT_FOLLOW_IDLE_MS', 45000),
-      maxDeltas: num(env, 'OFFICE_CHAT_FOLLOW_MAX_DELTAS', 200),
-      bootstrapRetries: num(env, 'OFFICE_CHAT_BOOTSTRAP_RETRIES', 8),
-      bootstrapIntervalMs: num(env, 'OFFICE_CHAT_BOOTSTRAP_INTERVAL_MS', 750),
-      completionSummaryEnabled: env.OPERATOR_COMPLETION_SUMMARY !== 'false', // default ON
+      maxMs: e.OFFICE_CHAT_FOLLOW_MAX_MS,
+      idleMs: e.OFFICE_CHAT_FOLLOW_IDLE_MS,
+      maxDeltas: e.OFFICE_CHAT_FOLLOW_MAX_DELTAS,
+      bootstrapRetries: e.OFFICE_CHAT_BOOTSTRAP_RETRIES,
+      bootstrapIntervalMs: e.OFFICE_CHAT_BOOTSTRAP_INTERVAL_MS,
+      completionSummaryEnabled: e.OPERATOR_COMPLETION_SUMMARY, // default ON
     },
     stream: {
-      reconnectBaseMs: num(env, 'OFFICE_STREAM_RECONNECT_BASE_MS', 1000),
-      reconnectMaxMs: num(env, 'OFFICE_STREAM_RECONNECT_MAX_MS', 30000),
+      reconnectBaseMs: e.OFFICE_STREAM_RECONNECT_BASE_MS,
+      reconnectMaxMs: e.OFFICE_STREAM_RECONNECT_MAX_MS,
     },
     platform,
     downstreamBacktests: {
-      enabled: env.OPERATOR_DOWNSTREAM_BACKTESTS === 'true' && connectorMode === 'trading-lab',
-      idleMs: num(env, 'OFFICE_BACKTEST_WATCH_IDLE_MS', 120000),
-      maxMs: num(env, 'OFFICE_BACKTEST_WATCH_MAX_MS', 900000),
-      bootstrapRetries: num(env, 'OFFICE_CHAT_BOOTSTRAP_RETRIES', 8),
-      bootstrapIntervalMs: num(env, 'OFFICE_CHAT_BOOTSTRAP_INTERVAL_MS', 750),
-      summaryRetries: num(env, 'OFFICE_BACKTEST_SUMMARY_RETRIES', 5),
-      summaryIntervalMs: num(env, 'OFFICE_BACKTEST_SUMMARY_INTERVAL_MS', 500),
+      enabled: e.OPERATOR_DOWNSTREAM_BACKTESTS && connectorMode === 'trading-lab',
+      idleMs: e.OFFICE_BACKTEST_WATCH_IDLE_MS,
+      maxMs: e.OFFICE_BACKTEST_WATCH_MAX_MS,
+      bootstrapRetries: e.OFFICE_CHAT_BOOTSTRAP_RETRIES,
+      bootstrapIntervalMs: e.OFFICE_CHAT_BOOTSTRAP_INTERVAL_MS,
+      summaryRetries: e.OFFICE_BACKTEST_SUMMARY_RETRIES,
+      summaryIntervalMs: e.OFFICE_BACKTEST_SUMMARY_INTERVAL_MS,
     },
     cycleScorecard: {
-      enabled: env.OPERATOR_CYCLE_SCORECARD === 'true' && connectorMode === 'trading-lab',
+      enabled: e.OPERATOR_CYCLE_SCORECARD && connectorMode === 'trading-lab',
       guards: {
-        ttlMs: num(env, 'OFFICE_SCORECARD_TTL_MS', 3_600_000),
-        bootstrapRetries: num(env, 'OFFICE_SCORECARD_BOOTSTRAP_RETRIES', 8),
-        bootstrapIntervalMs: num(env, 'OFFICE_SCORECARD_BOOTSTRAP_INTERVAL_MS', 750),
-        fetchRetries: num(env, 'OFFICE_SCORECARD_FETCH_RETRIES', 3),
-        fetchIntervalMs: num(env, 'OFFICE_SCORECARD_FETCH_INTERVAL_MS', 500),
+        ttlMs: e.OFFICE_SCORECARD_TTL_MS,
+        bootstrapRetries: e.OFFICE_SCORECARD_BOOTSTRAP_RETRIES,
+        bootstrapIntervalMs: e.OFFICE_SCORECARD_BOOTSTRAP_INTERVAL_MS,
+        fetchRetries: e.OFFICE_SCORECARD_FETCH_RETRIES,
+        fetchIntervalMs: e.OFFICE_SCORECARD_FETCH_INTERVAL_MS,
       },
     },
     auth,

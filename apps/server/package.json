@@ -17,7 +17,9 @@
     "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "env:schema": "tsx src/envSchemaCli.ts",
+    "env:docs": "tsx src/envDocsCli.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.0",
