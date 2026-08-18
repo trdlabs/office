@@ -16,3 +16,9 @@ docs/fable-input/references/*.png
 docs/fable-input/references/*.jpg
 docs/fable-input/references/*.jpeg
 docs/fable-input/references/*.webp
+
+# Изолированные рабочие деревья агентов (см. scripts/worktree-init.sh).
+# Без этих строк созданное дерево показывается как untracked и уезжает в коммит
+# первым же `git add -A` — вместе с чужим node_modules.
+.worktrees/
+.claude/worktrees/
