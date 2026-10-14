@@ -1,5 +1,6 @@
 # dependencies / build
 node_modules/
+node_modules
 dist/
 *.tsbuildinfo
 
@@ -21,4 +22,6 @@ docs/fable-input/references/*.webp
 # Без этих строк созданное дерево показывается как untracked и уезжает в коммит
 # первым же `git add -A` — вместе с чужим node_modules.
 .worktrees/
+.worktrees
 .claude/worktrees/
+.claude/worktrees
